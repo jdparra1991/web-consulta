@@ -56,7 +56,6 @@ const CICLOS_MAESTROS = {
 // Función para obtener fecha actual de Colombia (UTC-5) en formato YYYY-MM-DD
 const obtenerFechaColombia = () => {
   const ahora = new Date();
-  // Convertir a UTC y restar 5 horas para obtener Colombia (UTC-5)
   const colombia = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
   const año = colombia.getUTCFullYear();
   const mes = String(colombia.getUTCMonth() + 1).padStart(2, '0');
@@ -92,6 +91,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
   const [exporting, setExporting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showMonthModal, setShowMonthModal] = useState(false);
+  const [showDayModal, setShowDayModal] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(null);
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [excelData, setExcelData] = useState([]);
   const [excelPreview, setExcelPreview] = useState([]);
@@ -116,8 +118,12 @@ export default function ProgramacionDiaria({ onBack, rol }) {
   const [usuariosSeleccionados, setUsuariosSeleccionados] = useState([]);
   const [cicloAsignado, setCicloAsignado] = useState('40');
   const [usuariosProgramadosHoy, setUsuariosProgramadosHoy] = useState(new Set());
-  // Para asignación directa de ciclo pendiente
   const [cicloPreseleccionado, setCicloPreseleccionado] = useState(null);
+
+  // Para vista calendario mensual
+  const [calendarioData, setCalendarioData] = useState({});
+  const [calendarioCargando, setCalendarioCargando] = useState(false);
+  const [mesCalendario, setMesCalendario] = useState(mesControl);
 
   // Estadísticas
   const [stats, setStats] = useState({
@@ -179,7 +185,6 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       setProgramacion(data || []);
       setTotalCount(count || 0);
 
-      // Crear set de usuarios programados hoy
       const usuariosHoy = new Set();
       data?.forEach(item => usuariosHoy.add(item.usuario_nombre));
       setUsuariosProgramadosHoy(usuariosHoy);
@@ -216,6 +221,37 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       setCiclosAsignados(asignados);
     } catch (error) {
       console.error('Error cargando ciclos asignados:', error);
+    }
+  };
+
+  // Cargar datos para el calendario mensual
+  const cargarCalendario = async (mes) => {
+    if (!mes) return;
+    setCalendarioCargando(true);
+    const { inicio, fin } = obtenerRangoMes(mes);
+    try {
+      const { data, error } = await supabase
+        .from('programacion_actividades')
+        .select('fecha, actividad, usuario_nombre, ciclo, id')
+        .gte('fecha', inicio)
+        .lte('fecha', fin)
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+
+      const grouped = {};
+      data?.forEach(item => {
+        if (!grouped[item.fecha]) {
+          grouped[item.fecha] = [];
+        }
+        grouped[item.fecha].push(item);
+      });
+      setCalendarioData(grouped);
+    } catch (error) {
+      console.error('Error cargando calendario:', error);
+      alert('Error al cargar el calendario');
+    } finally {
+      setCalendarioCargando(false);
     }
   };
 
@@ -304,10 +340,13 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       await cargarProgramacion();
       await cargarEstadisticas();
       await cargarCiclosAsignados();
+      if (showMonthModal) {
+        await cargarCalendario(mesCalendario);
+      }
       alert(`✅ ${inserts.length} asignaciones guardadas`);
     } catch (error) {
       console.error('Error guardando asignación:', error);
-      alert('Error al guardar');
+      alert('Error al guardar: ' + (error.message || JSON.stringify(error)));
     } finally {
       setLoading(false);
     }
@@ -326,6 +365,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       await cargarProgramacion();
       await cargarEstadisticas();
       await cargarCiclosAsignados();
+      if (showMonthModal) {
+        await cargarCalendario(mesCalendario);
+      }
       alert('Eliminada');
     } catch (error) {
       console.error('Error eliminando:', error);
@@ -413,6 +455,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       await cargarProgramacion();
       await cargarEstadisticas();
       await cargarCiclosAsignados();
+      if (showMonthModal) {
+        await cargarCalendario(mesCalendario);
+      }
       alert(`✅ ${toInsert.length} registros cargados`);
     } catch (error) {
       console.error('Error guardando Excel:', error);
@@ -455,6 +500,47 @@ export default function ProgramacionDiaria({ onBack, rol }) {
     pendientesPorActividad[act.id] = { total, asignados, pendientes };
   });
 
+  // Funciones auxiliares para el calendario
+  const cambiarMesCalendario = (delta) => {
+    const [año, mes] = mesCalendario.split('-').map(Number);
+    const fecha = new Date(Date.UTC(año, mes - 1, 1));
+    fecha.setUTCMonth(fecha.getUTCMonth() + delta);
+    const nuevoAño = fecha.getUTCFullYear();
+    const nuevoMes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
+    const nuevoMesStr = `${nuevoAño}-${nuevoMes}`;
+    setMesCalendario(nuevoMesStr);
+    cargarCalendario(nuevoMesStr);
+  };
+
+  const generarDiasDelMes = (mes) => {
+    const [año, mesNum] = mes.split('-').map(Number);
+    const primerDia = new Date(Date.UTC(año, mesNum - 1, 1));
+    const ultimoDia = new Date(Date.UTC(año, mesNum, 0));
+    const diasEnMes = ultimoDia.getUTCDate();
+    
+    // Ajustar para que la semana comience en lunes (getUTCDay() devuelve 0 domingo, 1 lunes, ... 6 sábado)
+    const diaSemanaInicio = primerDia.getUTCDay() === 0 ? 6 : primerDia.getUTCDay() - 1; // 0=lunes, 1=martes, ..., 6=domingo
+    
+    const dias = [];
+    // Rellenar celdas vacías antes del primer día
+    for (let i = 0; i < diaSemanaInicio; i++) {
+      dias.push({ fecha: null, vacio: true, asignaciones: [] });
+    }
+    // Rellenar los días del mes
+    for (let d = 1; d <= diasEnMes; d++) {
+      const fechaStr = `${año}-${String(mesNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const asignaciones = calendarioData[fechaStr] || [];
+      dias.push({ fecha: fechaStr, dia: d, asignaciones, vacio: false });
+    }
+    return dias;
+  };
+
+  const handleDayClick = (dia) => {
+    if (dia.vacio) return;
+    setSelectedDay(dia);
+    setShowDayModal(true);
+  };
+
   return (
     <div className="page">
       <header className="topbar">
@@ -490,17 +576,27 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       {/* Selector de mes para control de ciclos */}
       <div style={{ marginBottom: 20, padding: 16, background: '#fff', borderRadius: 12, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
         <h3 style={{ marginBottom: 12 }}>📋 Control de Ciclos del Mes</h3>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="month"
             value={mesControl}
             onChange={e => setMesControl(e.target.value)}
             style={{ padding: '8px', borderRadius: 8, border: '1px solid #e2e8f0' }}
           />
+          <button
+            className="action-btn secondary"
+            onClick={() => {
+              setMesCalendario(mesControl);
+              cargarCalendario(mesControl);
+              setShowMonthModal(true);
+            }}
+          >
+            📅 Ver Calendario Mensual
+          </button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 16 }}>
           {ACTIVIDADES.map(act => {
-            const { total, asignados, pendientes } = pendientesPorActividad[act.id] || {};
+            const { total, asignados } = pendientesPorActividad[act.id] || {};
             return (
               <div key={act.id} className="stat-card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -512,66 +608,59 @@ export default function ProgramacionDiaria({ onBack, rol }) {
                 <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, marginBottom: 12 }}>
                   <div style={{ width: `${(asignados/total)*100}%`, height: '100%', background: act.color, borderRadius: 4 }} />
                 </div>
-                <div>
-                  <span style={{ fontWeight: 600 }}>Pendientes: </span>
-                  {pendientes?.length > 0 ? (
-                    <span style={{ color: '#ef4444', fontSize: 13 }}>
-                      {pendientes.slice(0, 5).join(', ')}{pendientes.length > 5 && '...'}
-                    </span>
-                  ) : (
-                    <span style={{ color: '#10b981' }}>✓ Todos asignados</span>
-                  )}
-                </div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Lista de ciclos pendientes por actividad */}
+      {/* Lista de ciclos pendientes por actividad - versión compacta */}
       <div style={{ marginBottom: 24 }}>
         <h3 style={{ marginBottom: 12 }}>⏳ Ciclos Pendientes de Asignación</h3>
-        {ACTIVIDADES.map(act => {
-          const pendientes = pendientesPorActividad[act.id]?.pendientes || [];
-          if (pendientes.length === 0) return null;
-          return (
-            <div key={act.id} style={{ marginBottom: 20 }}>
-              <h4 style={{ color: act.color, marginBottom: 8 }}>{act.nombre}</h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {pendientes.map(ciclo => (
-                  <button
-                    key={ciclo}
-                    className="badge"
-                    style={{
-                      background: '#f1f5f9',
-                      padding: '6px 12px',
-                      borderRadius: 20,
-                      cursor: 'pointer',
-                      border: '1px solid #e2e8f0',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4
-                    }}
-                    onClick={() => {
-                      setActividadSeleccionada(act);
-                      setCicloAsignado(ciclo);
-                      setCicloPreseleccionado(ciclo);
-                      setUsuariosSeleccionados([]);
-                      setModalActividadVisible(true);
-                    }}
-                  >
-                    {ciclo} ➕
-                  </button>
-                ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          {ACTIVIDADES.map(act => {
+            const pendientes = pendientesPorActividad[act.id]?.pendientes || [];
+            return (
+              <div key={act.id} style={{ background: '#fff', borderRadius: 8, padding: 12, border: '1px solid #e2e8f0' }}>
+                <h4 style={{ color: act.color, marginBottom: 8, fontSize: 14, fontWeight: 600 }}>{act.nombre}</h4>
+                {pendientes.length === 0 ? (
+                  <p style={{ color: '#10b981', fontSize: 13 }}>✓ Todos asignados</p>
+                ) : (
+                  <div style={{ maxHeight: 200, overflowY: 'auto', paddingRight: 4 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {pendientes.map(ciclo => (
+                        <button
+                          key={ciclo}
+                          className="badge"
+                          style={{
+                            background: '#f1f5f9',
+                            padding: '4px 8px',
+                            borderRadius: 16,
+                            cursor: 'pointer',
+                            border: '1px solid #e2e8f0',
+                            fontSize: 12,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 2
+                          }}
+                          onClick={() => {
+                            setActividadSeleccionada(act);
+                            setCicloAsignado(ciclo);
+                            setCicloPreseleccionado(ciclo);
+                            setUsuariosSeleccionados([]);
+                            setModalActividadVisible(true);
+                          }}
+                        >
+                          {ciclo} ➕
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          );
-        })}
-        {Object.values(pendientesPorActividad).every(p => p.pendientes.length === 0) && (
-          <p style={{ color: '#64748b', textAlign: 'center', padding: 20 }}>
-            ¡Todos los ciclos han sido asignados en este mes!
-          </p>
-        )}
+            );
+          })}
+        </div>
       </div>
 
       {/* Tarjetas de actividades del día */}
@@ -798,6 +887,135 @@ export default function ProgramacionDiaria({ onBack, rol }) {
         </div>
       )}
 
+      {/* Modal de calendario mensual */}
+      {showMonthModal && (
+        <div className="modal-overlay" onClick={() => setShowMonthModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 1000, maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <button className="icon-btn" onClick={() => cambiarMesCalendario(-1)}>←</button>
+                <h2>{new Date(mesCalendario + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</h2>
+                <button className="icon-btn" onClick={() => cambiarMesCalendario(1)}>→</button>
+              </div>
+              <button className="close-btn" onClick={() => setShowMonthModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ overflowY: 'auto' }}>
+              {calendarioCargando ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>Cargando calendario...</div>
+              ) : (
+                <>
+                  {/* Días de la semana */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8, textAlign: 'center', fontWeight: 600 }}>
+                    <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+                  </div>
+                  {/* Cuadrícula de días */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                    {generarDiasDelMes(mesCalendario).map((dia, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => handleDayClick(dia)}
+                        style={{
+                          minHeight: 100,
+                          background: dia.vacio ? '#f9f9f9' : '#fff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 8,
+                          padding: 8,
+                          position: 'relative',
+                          opacity: dia.vacio ? 0.5 : 1,
+                          cursor: dia.vacio ? 'default' : 'pointer',
+                          transition: 'all 0.2s',
+                          ...(!dia.vacio && { ':hover': { boxShadow: '0 4px 12px rgba(0,0,0,0.1)', transform: 'scale(1.02)' } })
+                        }}
+                      >
+                        {!dia.vacio && (
+                          <>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>{dia.dia}</div>
+                            {dia.asignaciones && dia.asignaciones.length > 0 ? (
+                              <div style={{ fontSize: 12 }}>
+                                {dia.asignaciones.slice(0, 3).map((a, i) => (
+                                  <div key={i} style={{ 
+                                    background: a.actividad === 'lectura' ? '#dbeafe' :
+                                               a.actividad === 'reparto' ? '#d9f99d' : '#fed7aa',
+                                    padding: '2px 4px',
+                                    borderRadius: 4,
+                                    marginBottom: 2,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}>
+                                    {a.usuario_nombre} ({a.ciclo})
+                                  </div>
+                                ))}
+                                {dia.asignaciones.length > 3 && (
+                                  <div style={{ color: '#64748b', marginTop: 2 }}>
+                                    +{dia.asignaciones.length - 3} más
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ color: '#94a3b8', fontSize: 12 }}>Sin asignaciones</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="primary-btn" onClick={() => setShowMonthModal(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de detalle del día */}
+      {showDayModal && selectedDay && (
+        <div className="modal-overlay" onClick={() => setShowDayModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Detalle del {formatearFechaLocal(selectedDay.fecha)}</h2>
+              <button className="close-btn" onClick={() => setShowDayModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {selectedDay.asignaciones && selectedDay.asignaciones.length > 0 ? (
+                <table className="table-container" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>Actividad</th>
+                      <th>Usuario</th>
+                      <th>Ciclo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedDay.asignaciones.map(asig => (
+                      <tr key={asig.id}>
+                        <td>
+                          <span className="badge" style={{
+                            background: asig.actividad === 'lectura' ? '#dbeafe' :
+                                         asig.actividad === 'reparto' ? '#d9f99d' : '#fed7aa'
+                          }}>
+                            {asig.actividad}
+                          </span>
+                        </td>
+                        <td>{asig.usuario_nombre}</td>
+                        <td>{asig.ciclo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>No hay asignaciones para este día.</p>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="primary-btn" onClick={() => setShowDayModal(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de vista previa Excel */}
       {showExcelModal && (
         <div className="modal-overlay" onClick={() => setShowExcelModal(false)}>
@@ -829,7 +1047,7 @@ export default function ProgramacionDiaria({ onBack, rol }) {
         </div>
       )}
 
-      {/* Paginación */}
+      {/* Paginación principal */}
       {totalCount > PAGE_SIZE && (
         <div className="pagination">
           <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}>← Anterior</button>

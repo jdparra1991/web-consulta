@@ -166,6 +166,62 @@ export default function Nomenclatura({ onBack, rol }) {
     }
   }
 
+  // Función para descargar plantilla Excel
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new()
+
+    // HOJA 1: INSTRUCTIVO
+    const instructivo = [
+      ['INSTRUCTIVO PARA CARGA DE NOMENCLATURA'],
+      [''],
+      ['1. FORMATO DE FECHAS: YYYY-MM-DD (ej: 2026-02-17)'],
+      ['2. CAMPOS OBLIGATORIOS: Fecha Recepción, Tipo, Nombres Solicitante'],
+      ['3. COLUMNAS (en este orden):'],
+      ['   • FECHA RECEPCION (fecha)'],
+      ['   • TIPO (Asignacion / Certificacion)'],
+      ['   • ZONA A VISITAR (texto)'],
+      ['   • FECHA VISITA (fecha, opcional)'],
+      ['   • NOMBRES SOLICITANTE (texto)'],
+      ['   • CEDULA (texto)'],
+      ['   • LUGAR EXPEDICION (texto)'],
+      ['   • TELEFONO (texto)'],
+      ['   • DOCUMENTO (texto libre)'],
+      ['   • CONTRATO VECINO (texto)'],
+      ['   • RUTA/CONSECUTIVO (texto)'],
+      ['   • CICLO (texto)'],
+      ['   • DIRECCION ASIGNADA (texto)'],
+      ['   • TIPO SOPORTE (texto)'],
+      ['   • NOTA (texto)'],
+      [''],
+      ['4. NOTA: Los campos id, created_at, updated_at, creado_por_id, creado_por_nombre se generan automáticamente.'],
+    ]
+    const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo)
+    wsInstructivo['!cols'] = [{ wch: 80 }]
+    XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo')
+
+    // HOJA 2: EJEMPLO CON DATOS
+    const ejemplo = [
+      ['FECHA RECEPCION', 'TIPO', 'ZONA A VISITAR', 'FECHA VISITA', 'NOMBRES SOLICITANTE', 'CEDULA', 'LUGAR EXPEDICION', 'TELEFONO', 'DOCUMENTO', 'CONTRATO VECINO', 'RUTA/CONSECUTIVO', 'CICLO', 'DIRECCION ASIGNADA', 'TIPO SOPORTE', 'NOTA'],
+      ['2026-02-17', 'Asignacion', 'Zona Norte', '2026-02-20', 'Juan Pérez', '123456789', 'Cali', '3001234567', 'Doc1', 'CT-001', 'RUTA-01', '40', 'Calle 123', 'Soporte A', 'Nota de prueba'],
+      ['2026-02-18', 'Certificacion', 'Zona Sur', '', 'María Gómez', '987654321', 'Bogotá', '3107654321', 'Doc2', 'CT-002', 'RUTA-02', '42', 'Carrera 50', 'Soporte B', ''],
+    ]
+    const wsEjemplo = XLSX.utils.aoa_to_sheet(ejemplo)
+    wsEjemplo['!cols'] = [
+      { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 12 }, { wch: 25 },
+      { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
+      { wch: 15 }, { wch: 8 }, { wch: 25 }, { wch: 15 }, { wch: 20 }
+    ]
+    XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo')
+
+    // HOJA 3: PLANTILLA VACÍA
+    const plantilla = [ejemplo[0], []]
+    const wsPlantilla = XLSX.utils.aoa_to_sheet(plantilla)
+    wsPlantilla['!cols'] = wsEjemplo['!cols']
+    XLSX.utils.book_append_sheet(wb, wsPlantilla, 'Plantilla')
+
+    XLSX.writeFile(wb, 'plantilla_nomenclatura.xlsx')
+  }
+
   const exportarExcel = async () => {
     try {
       setExporting(true)
@@ -394,8 +450,11 @@ export default function Nomenclatura({ onBack, rol }) {
 
       {/* Botones de acción */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+        <button className="action-btn secondary" onClick={descargarPlantilla}>
+          📥 Descargar Plantilla
+        </button>
         <label className={`action-btn secondary ${exporting ? 'disabled' : ''}`}>
-          📥 Cargar Excel
+          📤 Cargar Excel
           <input type="file" accept=".xlsx,.xls,.csv" onChange={cargarExcel} style={{ display: 'none' }} disabled={exporting} />
         </label>
         <button className="action-btn success" onClick={exportarExcel} disabled={exporting || loading}>
