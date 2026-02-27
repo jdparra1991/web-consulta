@@ -730,34 +730,38 @@ export default function AlistamientoFacturas({ onBack, rol }) {
   }
 
   async function guardarExcel() {
-    setLoading(true)
-    try {
-      const user = (await supabase.auth.getUser()).data.user
-      const toInsert = excelData.map(r => ({
-        ...r,
-        user_id: user?.id,
-        paquetes: JSON.parse(r.paquetes)
-      }))
-      
-      const { error } = await supabase
-        .from('alistamiento_facturas')
-        .insert(toInsert)
+  setLoading(true);
+  try {
+    const user = (await supabase.auth.getUser()).data.user;
+    const toInsert = excelData.map(r => ({
+      ...r,
+      user_id: user?.id,
+      paquetes: JSON.parse(r.paquetes) // si viene como string
+    }));
+    
+    const { error } = await supabase
+      .from('alistamiento_facturas')
+      .upsert(toInsert, { 
+        onConflict: 'ciclo_id, mes_trabajo',
+        ignoreDuplicates: false // false = actualiza, true = ignora
+      });
 
-      if (error) throw error
-      setShowExcelModal(false)
-      setExcelData([])
-      setExcelPreview([])
-      await cargarItems()
-      await cargarEstadisticas()
-      await calcularControlCiclos()
-      alert(`✅ ${toInsert.length} registros cargados`)
-    } catch (error) {
-      console.error('Error guardando Excel:', error)
-      alert('Error al cargar Excel: ' + error.message)
-    } finally {
-      setLoading(false)
-    }
+    if (error) throw error;
+    
+    setShowExcelModal(false);
+    setExcelData([]);
+    setExcelPreview([]);
+    await cargarItems();
+    await cargarEstadisticas();
+    await calcularControlCiclos();
+    alert(`✅ ${toInsert.length} registros procesados (insertados/actualizados)`);
+  } catch (error) {
+    console.error('Error guardando Excel:', error);
+    alert('Error al cargar Excel: ' + error.message);
+  } finally {
+    setLoading(false);
   }
+}
 
   function editar(item) {
     setFormData({
