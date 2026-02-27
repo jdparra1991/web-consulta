@@ -30,7 +30,8 @@ export default function Home({ onSelect, onLogout, userEmail, rol }) {
         { id: 'reclamos', titulo: '⚠️ Reclamos de Reparto', descripcion: 'Gestión de reclamos', color: '#ef4444' },
         { id: 'devoluciones', titulo: '🔄 Devoluciones', descripcion: 'Devoluciones de reparto', color: '#f97316' },
         { id: 'nomenclatura', titulo: '🏷️ Asignación Nomenclatura', descripcion: 'Asignación de nomenclatura', color: '#8b5cf6' },
-        { id: 'alistamiento-facturas', titulo: '📋 Alistamiento Facturas', descripcion: 'Gestión de alistamiento de facturas', color: '#9c89b8' }
+        { id: 'alistamiento-facturas', titulo: '📋 Alistamiento Facturas', descripcion: 'Gestión de alistamiento de facturas', color: '#9c89b8' },
+        { id: 'resultados-digitales', titulo: '📧 Resultados Digitales', descripcion: 'Gestión de resultados digitales', color: '#8b5cf6' }
       ]
     }
   }

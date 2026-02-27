@@ -16,8 +16,9 @@ import AnalisisRevisiones from './pages/AnalisisRevisiones'
 import CiclosProcesados from './pages/CiclosProcesados'
 import Llamadas from './pages/Llamadas'
 import AlistamientoFacturas from './pages/AlistamientoFacturas'
-import AMI from './pages/AMI'  // 👈 NUEVA PÁGINA
+import AMI from './pages/AMI'
 import ProgramacionDiaria from './pages/ProgramacionDiaria'
+import ResultadosDigitales from './pages/ResultadosDigitales'
 
 // Home
 import Home from './pages/Home'
@@ -196,6 +197,9 @@ export default function App() {
             <button className={page === 'alistamiento-facturas' ? 'active' : ''} onClick={() => setPage('alistamiento-facturas')}>
               📋 Alistamiento Facturas
             </button>
+            <button className={page === 'resultados-digitales' ? 'active' : ''} onClick={() => setPage('resultados-digitales')}>
+              📧 Resultados Digitales
+            </button>
           </div>
         </nav>
 
@@ -221,8 +225,9 @@ export default function App() {
         {page === 'ciclos-procesados' && <CiclosProcesados rol={rol} onBack={handleBackToHome} />}
         {page === 'llamadas' && <Llamadas rol={rol} onBack={handleBackToHome} />}
         {page === 'alistamiento-facturas' && <AlistamientoFacturas rol={rol} onBack={handleBackToHome} />}
-        {page === 'ami' && <AMI rol={rol} onBack={handleBackToHome} />}  {/* 👈 NUEVO CASE */}
+        {page === 'ami' && <AMI rol={rol} onBack={handleBackToHome} />}
         {page === 'programacion-diaria' && <ProgramacionDiaria rol={rol} onBack={handleBackToHome} />}
+        {page === 'resultados-digitales' && <ResultadosDigitales rol={rol} onBack={handleBackToHome} />}
       </main>
     </div>
   )
