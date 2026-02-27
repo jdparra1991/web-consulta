@@ -19,6 +19,7 @@ const PAGE_SIZE = 10
 const COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 
 const GESTORES = ['Aylin Estefani Maje', 'Diego Hernandez', 'Andres Arboleda']
+const TIPOS_REVISION = ['Critica', 'Pqr']
 
 // Definición de los campos que suman al total (causas + lecturas)
 const CAMPOS_TOTAL = [
@@ -88,6 +89,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
   const [formData, setFormData] = useState({
     fecha_revision: obtenerFechaColombia(),
     ciclo: '',
+    tipo_revision: '', // NUEVO CAMPO
     causa_13: 0,
     causa_15: 0,
     causa_16: 0,
@@ -216,6 +218,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
       ['3. COLUMNAS (en este orden):'],
       ['   • fecha_revision (fecha)'],
       ['   • ciclo (texto)'],
+      ['   • tipo_revision (Critica / Pqr)'], // NUEVO
       ['   • causa_13 (número)'],
       ['   • causa_15 (número)'],
       ['   • causa_16 (número)'],
@@ -239,12 +242,12 @@ export default function AnalisisRevisiones({ onBack, rol }) {
     XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo')
 
     const ejemplo = [
-      ['fecha_revision', 'ciclo', 'causa_13', 'causa_15', 'causa_16', 'causa_34', 'causa_36', 'causa_37', 'causa_58', 'causa_71', 'cantidad_lectura_observacion', 'cantidad_emcali', 'cantidad_consorcio', 'cantidad_conformes', 'cantidad_inconsistencias', 'analizado_por'],
-      ['2026-02-17', '40', '5', '3', '2', '1', '0', '4', '2', '1', '10', '5', '3', '20', '2', 'Gestor 1'],
-      ['2026-02-18', '42', '2', '1', '0', '0', '1', '2', '0', '0', '8', '2', '1', '15', '3', 'Gestor 2'],
+      ['fecha_revision', 'ciclo', 'tipo_revision', 'causa_13', 'causa_15', 'causa_16', 'causa_34', 'causa_36', 'causa_37', 'causa_58', 'causa_71', 'cantidad_lectura_observacion', 'cantidad_emcali', 'cantidad_consorcio', 'cantidad_conformes', 'cantidad_inconsistencias', 'analizado_por'],
+      ['2026-02-17', '40', 'Critica', '5', '3', '2', '1', '0', '4', '2', '1', '10', '5', '3', '20', '2', 'Gestor 1'],
+      ['2026-02-18', '42', 'Pqr', '2', '1', '0', '0', '1', '2', '0', '0', '8', '2', '1', '15', '3', 'Gestor 2'],
     ]
     const wsEjemplo = XLSX.utils.aoa_to_sheet(ejemplo)
-    wsEjemplo['!cols'] = Array(16).fill({ wch: 15 })
+    wsEjemplo['!cols'] = Array(17).fill({ wch: 15 })
     XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo')
 
     const plantilla = [ejemplo[0], []]
@@ -271,6 +274,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
       const excelRows = data.map(r => ({
         'Fecha Revisión': r.fecha_revision,
         'Ciclo': r.ciclo,
+        'Tipo Revisión': r.tipo_revision || '', // NUEVO
         'Causa 13': r.causa_13,
         'Causa 15': r.causa_15,
         'Causa 16': r.causa_16,
@@ -387,25 +391,27 @@ export default function AnalisisRevisiones({ onBack, rol }) {
       const colMap = {
         'fecha_revision': 0,
         'ciclo': 1,
-        'causa_13': 2,
-        'causa_15': 3,
-        'causa_16': 4,
-        'causa_34': 5,
-        'causa_36': 6,
-        'causa_37': 7,
-        'causa_58': 8,
-        'causa_71': 9,
-        'cantidad_lectura_observacion': 10,
-        'cantidad_emcali': 11,
-        'cantidad_consorcio': 12,
-        'cantidad_conformes': 13,
-        'cantidad_inconsistencias': 14,
-        'analizado_por': 15
+        'tipo_revision': 2, // NUEVO
+        'causa_13': 3,
+        'causa_15': 4,
+        'causa_16': 5,
+        'causa_34': 6,
+        'causa_36': 7,
+        'causa_37': 8,
+        'causa_58': 9,
+        'causa_71': 10,
+        'cantidad_lectura_observacion': 11,
+        'cantidad_emcali': 12,
+        'cantidad_consorcio': 13,
+        'cantidad_conformes': 14,
+        'cantidad_inconsistencias': 15,
+        'analizado_por': 16
       }
 
       const parsed = dataRows.map(row => ({
         fecha_revision: row[colMap['fecha_revision']] || obtenerFechaColombia(),
         ciclo: row[colMap['ciclo']] || '',
+        tipo_revision: row[colMap['tipo_revision']] || '', // NUEVO
         causa_13: parseInt(row[colMap['causa_13']]) || 0,
         causa_15: parseInt(row[colMap['causa_15']]) || 0,
         causa_16: parseInt(row[colMap['causa_16']]) || 0,
@@ -485,6 +491,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
     setFormData({
       fecha_revision: obtenerFechaColombia(),
       ciclo: '',
+      tipo_revision: '', // NUEVO
       causa_13: 0,
       causa_15: 0,
       causa_16: 0,
@@ -643,13 +650,14 @@ export default function AnalisisRevisiones({ onBack, rol }) {
               <div className="table-container" style={{ maxHeight: 300, overflow: 'auto' }}>
                 <table>
                   <thead>
-                    <tr><th>Fecha</th><th>Ciclo</th><th>Analizado por</th></tr>
+                    <tr><th>Fecha</th><th>Ciclo</th><th>Tipo</th><th>Analizado por</th></tr>
                   </thead>
                   <tbody>
                     {excelPreview.map((r,i) => (
                       <tr key={i}>
                         <td>{r.fecha_revision}</td>
                         <td>{r.ciclo}</td>
+                        <td>{r.tipo_revision}</td>
                         <td>{r.analizado_por}</td>
                       </tr>
                     ))}
@@ -689,6 +697,13 @@ export default function AnalisisRevisiones({ onBack, rol }) {
                   <div className="form-group">
                     <label>Ciclo</label>
                     <input type="text" value={formData.ciclo} onChange={e => setFormData({...formData, ciclo: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label>Tipo Revisión</label> {/* NUEVO */}
+                    <select value={formData.tipo_revision} onChange={e => setFormData({...formData, tipo_revision: e.target.value})}>
+                      <option value="">Seleccionar</option>
+                      {TIPOS_REVISION.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label>Analizado Por</label>
@@ -763,7 +778,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
         <table>
           <thead>
             <tr>
-              <th>Fecha</th><th>Ciclo</th>
+              <th>Fecha</th><th>Ciclo</th><th>Tipo</th> {/* NUEVA COLUMNA */}
               <th>C13</th><th>C15</th><th>C16</th><th>C34</th><th>C36</th><th>C37</th><th>C58</th><th>C71</th>
               <th>Lect/Obs</th><th>Emcali</th><th>Consorcio</th><th>Conformes</th><th>Inconsist</th>
               <th>Total</th><th>Analizado por</th>
@@ -779,6 +794,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
                 <tr key={item.id}>
                   <td>{item.fecha_revision}</td>
                   <td>{item.ciclo}</td>
+                  <td>{item.tipo_revision || '-'}</td> {/* NUEVO */}
                   <td>{item.causa_13}</td>
                   <td>{item.causa_15}</td>
                   <td>{item.causa_16}</td>
@@ -804,7 +820,7 @@ export default function AnalisisRevisiones({ onBack, rol }) {
               )
             })}
             {items.length === 0 && (
-              <tr><td colSpan={rol==='admin'?18:17} style={{textAlign:'center', padding:40}}>No hay registros</td></tr>
+              <tr><td colSpan={rol==='admin'?19:18} style={{textAlign:'center', padding:40}}>No hay registros</td></tr>
             )}
           </tbody>
         </table>

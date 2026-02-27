@@ -9,6 +9,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
+  LineChart,
+  Line,
   LabelList
 } from 'recharts'
 import * as XLSX from 'xlsx'
@@ -16,7 +18,15 @@ import { saveAs } from 'file-saver'
 import '../index.css'
 
 const PAGE_SIZE = 10
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+// Colores más suaves para los gráficos
+const COLORS = {
+  integracion: '#60a5fa', // azul claro
+  recuperados: '#fbbf24', // amarillo/ámbar
+  sinAccion: '#f87171',   // rojo claro
+  lineaIntegracion: '#3b82f6', // azul más fuerte para línea
+  lineaRecuperados: '#f59e0b', // naranja para línea
+  lineaSinAccion: '#ef4444'    // rojo para línea
+}
 
 const formatearNumero = (num) => new Intl.NumberFormat('es-CO').format(num || 0)
 
@@ -164,13 +174,16 @@ export default function AMI({ onBack, rol }) {
         m.pctSin = m.enviados > 0 ? ((m.sinAccion / m.enviados) * 100).toFixed(1) : 0
       })
 
+      // Ordenar ciclos por número de ciclo
+      const ciclosOrdenados = Object.values(porCiclo).sort((a,b) => a.ciclo - b.ciclo)
+
       setStats({
         totalRegistros: data?.length || 0,
         totalEnviados,
         totalIntegracion,
         totalRecuperados,
         totalSinAccion,
-        porCiclo: Object.values(porCiclo).sort((a,b) => a.ciclo - b.ciclo),
+        porCiclo: ciclosOrdenados,
         porMes: Object.values(porMes).sort((a,b) => a.mes.localeCompare(b.mes))
       })
     } catch (error) {
@@ -506,72 +519,170 @@ export default function AMI({ onBack, rol }) {
             <div className="modal-body" style={{ overflowY: 'auto' }}>
               <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                 
-                {/* Gráfico de columnas: Totales por Ciclo */}
-                <div className="dashboard-card">
+                {/* Gráfico de columnas: Totales por Ciclo (barras independientes) */}
+                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
                   <h3>📊 Totales por Ciclo</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="ciclo" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => formatearNumero(value)} />
-                        <Legend />
-                        <Bar dataKey="integracion" fill="#10b981" name="Integración" radius={[4,4,0,0]}>
-                          <LabelList dataKey="integracion" position="top" formatter={formatearNumero} />
-                        </Bar>
-                        <Bar dataKey="recuperados" fill="#f59e0b" name="Recuperados" radius={[4,4,0,0]}>
-                          <LabelList dataKey="recuperados" position="top" formatter={formatearNumero} />
-                        </Bar>
-                        <Bar dataKey="sinAccion" fill="#ef4444" name="Sin Acción" radius={[4,4,0,0]}>
-                          <LabelList dataKey="sinAccion" position="top" formatter={formatearNumero} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div style={{ width: '100%', overflowX: 'auto' }}>
+                    <div style={{ width: Math.max(800, stats.porCiclo.length * 60) }}> {/* Ancho dinámico según cantidad de ciclos */}
+                      <ResponsiveContainer width="100%" height={350}>
+                        <BarChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="ciclo" 
+                            angle={-45} 
+                            textAnchor="end" 
+                            height={70} 
+                            interval={0}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <YAxis tickFormatter={formatearNumero} />
+                          <Tooltip formatter={(value) => formatearNumero(value)} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Bar 
+                            dataKey="integracion" 
+                            fill={COLORS.integracion} 
+                            name="Integración" 
+                            radius={[4,4,0,0]}
+                          >
+                            <LabelList 
+                              dataKey="integracion" 
+                              position="top" 
+                              fontSize={10} 
+                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
+                            />
+                          </Bar>
+                          <Bar 
+                            dataKey="recuperados" 
+                            fill={COLORS.recuperados} 
+                            name="Recuperados" 
+                            radius={[4,4,0,0]}
+                          >
+                            <LabelList 
+                              dataKey="recuperados" 
+                              position="top" 
+                              fontSize={10} 
+                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
+                            />
+                          </Bar>
+                          <Bar 
+                            dataKey="sinAccion" 
+                            fill={COLORS.sinAccion} 
+                            name="Sin Acción" 
+                            radius={[4,4,0,0]}
+                          >
+                            <LabelList 
+                              dataKey="sinAccion" 
+                              position="top" 
+                              fontSize={10} 
+                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
+                            />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 
-                {/* Gráfico de columnas: Porcentajes por Ciclo */}
-                <div className="dashboard-card">
+                {/* Gráfico de líneas: Porcentajes por Ciclo */}
+                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
                   <h3>📈 Porcentajes por Ciclo</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="ciclo" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip formatter={(value) => value + '%'} />
-                        <Legend />
-                        <Bar dataKey="pctInt" fill="#10b981" name="% Integración" radius={[4,4,0,0]}>
-                          <LabelList dataKey="pctInt" position="top" formatter={(v) => v + '%'} />
-                        </Bar>
-                        <Bar dataKey="pctRec" fill="#f59e0b" name="% Recuperados" radius={[4,4,0,0]}>
-                          <LabelList dataKey="pctRec" position="top" formatter={(v) => v + '%'} />
-                        </Bar>
-                        <Bar dataKey="pctSin" fill="#ef4444" name="% Sin Acción" radius={[4,4,0,0]}>
-                          <LabelList dataKey="pctSin" position="top" formatter={(v) => v + '%'} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div style={{ width: '100%', overflowX: 'auto' }}>
+                    <div style={{ width: Math.max(800, stats.porCiclo.length * 60) }}>
+                      <ResponsiveContainer width="100%" height={350}>
+                        <LineChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="ciclo" 
+                            angle={-45} 
+                            textAnchor="end" 
+                            height={70} 
+                            interval={0}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <YAxis domain={[0, 100]} tickFormatter={(v) => v + '%'} />
+                          <Tooltip formatter={(value) => value + '%'} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Line 
+                            type="monotone" 
+                            dataKey="pctInt" 
+                            stroke={COLORS.lineaIntegracion} 
+                            name="% Integración" 
+                            strokeWidth={2} 
+                            dot={{ r: 3 }}
+                          >
+                            <LabelList dataKey="pctInt" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                          </Line>
+                          <Line 
+                            type="monotone" 
+                            dataKey="pctRec" 
+                            stroke={COLORS.lineaRecuperados} 
+                            name="% Recuperados" 
+                            strokeWidth={2} 
+                            dot={{ r: 3 }}
+                          >
+                            <LabelList dataKey="pctRec" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                          </Line>
+                          <Line 
+                            type="monotone" 
+                            dataKey="pctSin" 
+                            stroke={COLORS.lineaSinAccion} 
+                            name="% Sin Acción" 
+                            strokeWidth={2} 
+                            dot={{ r: 3 }}
+                          >
+                            <LabelList dataKey="pctSin" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                          </Line>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 
-                {/* Gráfico histórico por mes */}
+                {/* Gráfico de líneas: Evolución Mensual */}
                 <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
                   <h3>📅 Evolución Mensual</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porMes} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mes" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => formatearNumero(value)} />
-                        <Legend />
-                        <Bar dataKey="integracion" fill="#10b981" name="Integración" radius={[4,4,0,0]} stackId="a" />
-                        <Bar dataKey="recuperados" fill="#f59e0b" name="Recuperados" radius={[4,4,0,0]} stackId="a" />
-                        <Bar dataKey="sinAccion" fill="#ef4444" name="Sin Acción" radius={[4,4,0,0]} stackId="a" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div style={{ width: '100%', overflowX: 'auto' }}>
+                    <div style={{ width: Math.max(800, stats.porMes.length * 80) }}>
+                      <ResponsiveContainer width="100%" height={350}>
+                        <LineChart data={stats.porMes} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                          <YAxis tickFormatter={formatearNumero} />
+                          <Tooltip formatter={(value) => formatearNumero(value)} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Line 
+                            type="monotone" 
+                            dataKey="integracion" 
+                            stroke={COLORS.lineaIntegracion} 
+                            name="Integración" 
+                            strokeWidth={2} 
+                            dot={{ r: 4 }}
+                          >
+                            <LabelList dataKey="integracion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                          </Line>
+                          <Line 
+                            type="monotone" 
+                            dataKey="recuperados" 
+                            stroke={COLORS.lineaRecuperados} 
+                            name="Recuperados" 
+                            strokeWidth={2} 
+                            dot={{ r: 4 }}
+                          >
+                            <LabelList dataKey="recuperados" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                          </Line>
+                          <Line 
+                            type="monotone" 
+                            dataKey="sinAccion" 
+                            stroke={COLORS.lineaSinAccion} 
+                            name="Sin Acción" 
+                            strokeWidth={2} 
+                            dot={{ r: 4 }}
+                          >
+                            <LabelList dataKey="sinAccion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                          </Line>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 

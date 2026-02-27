@@ -127,6 +127,7 @@ const RESULTADOS_DIGITALES = [
   { id: 'rechazado_varios_intentos', nombre: 'Rechazado varios intentos' },
   { id: 'reporta_spam', nombre: 'Reporta como spam' },
   { id: 'sin_adjunto', nombre: 'Sin adjunto' },
+  { id: 'servidor_destino_no_responde', nombre: 'Servidor destino no responde' },
 ]
 
 // Función para formatear números con separador de miles
@@ -253,6 +254,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     rechazado_varios_intentos: 0,
     reporta_spam: 0,
     sin_adjunto: 0,
+    servidor_destino_no_responde: 0,
   })
 
   useEffect(() => {
@@ -468,6 +470,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       ['   • rechazado_varios_intentos'],
       ['   • reporta_spam'],
       ['   • sin_adjunto'],
+      ['   • servidor_destino_no_responde'],
       [''],
       ['5. NOTA: Los campos id, created_at, updated_at, user_id se generan automáticamente.'],
     ]
@@ -476,7 +479,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo')
 
     const ejemplo = [
-      ['tipo_servicio','ciclo_id','ciclo_nombre','mes_trabajo','fecha_envio','fecha_vencimiento','fecha_aprobacion','fecha_alistamiento','cantidad_facturas','cantidad_anexos','cantidad_facturas_digitales','cantidad_facturas_pdf','cantidad_sin_ruta','cantidad_empresas','cantidad_retenidas','cantidad_da','cantidad_paquetes','paquetes','aprobado_por','alistado_por','novedades','cantidad_cartas_impedimento','cantidad_facturas_blancas','cantidad_facturas_amarillas','cantidad_pdf_adicionales','hora_envio_ciclo','hora_aprobacion','hora_alistamiento','cantidad_cartas_desviaciones','cantidad_cartera','fecha_envio_muestras','hora_envio_muestras','buzones_inactivo','buzones_lleno','buzones_no_existe','correo_mal_escrito','dominio_no_existe','enviados','rechazado_varios_intentos','reporta_spam','sin_adjunto'],
+      ['tipo_servicio','ciclo_id','ciclo_nombre','mes_trabajo','fecha_envio','fecha_vencimiento','fecha_aprobacion','fecha_alistamiento','cantidad_facturas','cantidad_anexos','cantidad_facturas_digitales','cantidad_facturas_pdf','cantidad_sin_ruta','cantidad_empresas','cantidad_retenidas','cantidad_da','cantidad_paquetes','paquetes','aprobado_por','alistado_por','novedades','cantidad_cartas_impedimento','cantidad_facturas_blancas','cantidad_facturas_amarillas','cantidad_pdf_adicionales','hora_envio_ciclo','hora_aprobacion','hora_alistamiento','cantidad_cartas_desviaciones','cantidad_cartera','fecha_envio_muestras','hora_envio_muestras','buzones_inactivo','buzones_lleno','buzones_no_existe','correo_mal_escrito','dominio_no_existe','enviados','rechazado_varios_intentos','reporta_spam','sin_adjunto','servidor_destino_no_responde'],
       ['servicios_publicos','40','Ciclo 40','2026-02-01','2026-02-01','2026-02-15','2026-02-10','2026-02-05','150','10','120','20','5','3','2','0','2','[{"tipo":"normal","cantidad":2}]','Juan Perez','Maria Gomez','Todo correcto','0','0','0','0','08:00','09:30','07:45','0','0','2026-02-06','10:15','2','1','0','1','0','50','3','1','0'],
       ['telecomunicaciones','42','Ciclo 42','2026-02-01','2026-02-02','2026-02-16','2026-02-11','2026-02-06','80','5','60','15','2','1','1','1','1','[{"tipo":"express","cantidad":1}]','Carlos Ruiz','Ana Torres','Sin novedad','1','2','1','2','09:00','10:00','08:00','1','0','2026-02-07','11:00','0','2','1','0','1','30','2','0','1'],
     ]
@@ -549,6 +552,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         'Rechazado varios intentos': r.rechazado_varios_intentos,
         'Reporta como spam': r.reporta_spam,
         'Sin adjunto': r.sin_adjunto,
+        'Servidor destino no responde': r.servidor_destino_no_responde,
         'Creado': new Date(r.created_at).toLocaleString('es-CO'),
         'Actualizado': new Date(r.updated_at).toLocaleString('es-CO'),
       }))
@@ -670,6 +674,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         'rechazado_varios_intentos': 38,
         'reporta_spam': 39,
         'sin_adjunto': 40,
+        'servidor_destino_no_responde': 41,
       }
 
       const parsed = dataRows.map(row => ({
@@ -714,6 +719,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         rechazado_varios_intentos: parseInt(row[colMap['rechazado_varios_intentos']]) || 0,
         reporta_spam: parseInt(row[colMap['reporta_spam']]) || 0,
         sin_adjunto: parseInt(row[colMap['sin_adjunto']]) || 0,
+        servidor_destino_no_responde: parseInt(row[colMap['servidor_destino_no_responde']]) || 0,
       }))
 
       setExcelData(parsed)
@@ -823,6 +829,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       rechazado_varios_intentos: 0,
       reporta_spam: 0,
       sin_adjunto: 0,
+      servidor_destino_no_responde: 0,
     })
   }
 
