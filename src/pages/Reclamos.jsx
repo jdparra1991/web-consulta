@@ -4,7 +4,7 @@ import {
   BarChart,
   Bar,
   XAxis,
-  YAxis,
+ YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
@@ -221,6 +221,89 @@ export default function Reclamos({ onBack, rol }) {
       console.error('Error cargando estadísticas:', error)
     }
   }
+
+  // ==================== FUNCIÓN DE DESCARGA DE PLANTILLA ====================
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new();
+
+    // --- Hoja 1: Instructivo (estático) ---
+    const instructivo = [
+      ['INSTRUCTIVO PARA CARGA DE RECLAMOS'],
+      [''],
+      ['1. FORMATO DE FECHAS:'],
+      ['   • La fecha del reclamo se asignará automáticamente al cargar (fecha actual).'],
+      ['   • No es necesario incluir una columna de fecha en el archivo.'],
+      [''],
+      ['2. CAMPOS DE TEXTO:'],
+      ['   • Ciclo, Contrato, Nombre, Contacto, Dirección, Ruta, Consecutivos, Digital, Gestión, Observación, Gestión Realizada, Justificación: texto libre.'],
+      ['   • Telecomunicaciones y Servicios Públicos: valores permitidos "Sí" o "No".'],
+      ['   • Medio de Recepción: seleccionar uno de la lista de valores permitidos.'],
+      ['   • Motivo: seleccionar uno de la lista de valores permitidos.'],
+      ['   • Causal: seleccionar uno de la lista de valores permitidos.'],
+      [''],
+      ['3. VALORES PERMITIDOS PARA MEDIO DE RECEPCIÓN:'],
+      ...MEDIOS_RECEPCION.map(m => [`   • ${m}`]),
+      [''],
+      ['4. VALORES PERMITIDOS PARA MOTIVO:'],
+      ...MOTIVOS.map(m => [`   • ${m}`]),
+      [''],
+      ['5. VALORES PERMITIDOS PARA CAUSAL:'],
+      ...CAUSALES.map(c => [`   • ${c}`]),
+      [''],
+      ['6. COLUMNAS (respetar este orden):'],
+      ['   • Columna A: CICLO (texto)'],
+      ['   • Columna B: CONTRATO (texto)'],
+      ['   • Columna C: TELECOMUNICACIONES (Sí/No)'],
+      ['   • Columna D: SERVICIOS PUBLICOS (Sí/No)'],
+      ['   • Columna E: NOMBRE (texto)'],
+      ['   • Columna F: CONTACTO (texto)'],
+      ['   • Columna G: DIRECCION DEL RECLAMO (texto)'],
+      ['   • Columna H: RUTA (texto)'],
+      ['   • Columna I: CONSECUTIVOS (texto)'],
+      ['   • Columna J: DIGITAL (texto)'],
+      ['   • Columna K: MEDIO DE RECEPCION RECLAMO (texto)'],
+      ['   • Columna L: Motivo (texto)'],
+      ['   • Columna M: GESTION (texto)'],
+      ['   • Columna N: OBSERVACION RECLAMO (texto)'],
+      ['   • Columna O: CAUSAL (texto)'],
+      ['   • Columna P: GESTION REALIZADA (texto)'],
+      ['   • Columna Q: JUSTIFICACION (texto)'],
+      [''],
+      ['7. IMPORTANTE:'],
+      ['   • El archivo debe tener exactamente estos encabezados (en mayúsculas como se indica).'],
+      ['   • Los registros se insertarán como nuevos, no se actualizan existentes.'],
+    ];
+    const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo);
+    wsInstructivo['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo');
+
+    // --- Hoja 2: Ejemplo con datos ---
+    const ejemploHeader = [
+      'CICLO', 'CONTRATO', 'TELECOMUNICACIONES', 'SERVICIOS PUBLICOS', 'NOMBRE',
+      'CONTACTO', 'DIRECCION DEL RECLAMO', 'RUTA', 'CONSECUTIVOS', 'DIGITAL',
+      'MEDIO DE RECEPCION RECLAMO', 'Motivo', 'GESTION', 'OBSERVACION RECLAMO',
+      'CAUSAL', 'GESTION REALIZADA', 'JUSTIFICACION'
+    ];
+    const ejemploData = [
+      ['40', 'CT-001', 'Sí', 'Sí', 'Juan Pérez', '3001234567', 'Calle 123', 'RUTA-01', 'CONS-001', 'Sí', 'WhatsApp', 'Facturación', 'Llamada', 'Cliente insatisfecho', 'Error humano', 'Se generó orden', 'Se envió técnico'],
+      ['42', 'CT-002', 'No', 'Sí', 'María Gómez', '3107654321', 'Carrera 50', 'RUTA-02', 'CONS-002', 'No', 'Llamada telefónica', 'Medidor', 'Revisión', 'Medidor dañado', 'Falla técnica', 'Se programó visita', 'Pendiente'],
+    ];
+    const wsEjemplo = XLSX.utils.aoa_to_sheet([ejemploHeader, ...ejemploData]);
+    wsEjemplo['!cols'] = [
+      { wch: 8 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
+      { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 8 },
+      { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 20 },
+      { wch: 20 }, { wch: 30 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo');
+
+    // --- Hoja 3: Plantilla vacía (solo encabezados) ---
+    const wsPlantilla = XLSX.utils.aoa_to_sheet([ejemploHeader]);
+    wsPlantilla['!cols'] = wsEjemplo['!cols'];
+    XLSX.utils.book_append_sheet(wb, wsPlantilla, 'Plantilla');
+
+    XLSX.writeFile(wb, 'plantilla_reclamos.xlsx');
+  };
 
   // Función para exportar a Excel
   const exportarExcel = async () => {
@@ -533,8 +616,12 @@ export default function Reclamos({ onBack, rol }) {
 
       {/* Botones de acción */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+        {/* NUEVO BOTÓN DE DESCARGA DE PLANTILLA */}
+        <button className="action-btn secondary" onClick={descargarPlantilla}>
+          📥 Descargar Plantilla
+        </button>
         <label className={`action-btn secondary ${exporting ? 'disabled' : ''}`}>
-          📥 Cargar Excel
+          📤 Cargar Excel
           <input
             type="file"
             accept=".xlsx,.xls,.csv"

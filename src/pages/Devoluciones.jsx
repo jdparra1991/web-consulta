@@ -195,7 +195,71 @@ export default function Devoluciones({ onBack, rol }) {
     }
   }
 
-  // Función para exportar a Excel
+  // ==================== FUNCIÓN DE DESCARGA DE PLANTILLA ====================
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new();
+
+    // --- Hoja 1: Instructivo (estático) ---
+    const instructivo = [
+      ['INSTRUCTIVO PARA CARGA DE DEVOLUCIONES'],
+      [''],
+      ['1. FORMATO DE FECHAS:'],
+      ['   • La fecha de devolución se asignará automáticamente al cargar (fecha actual).'],
+      ['   • No es necesario incluir una columna de fecha en el archivo.'],
+      [''],
+      ['2. CAMPOS NUMÉRICOS:'],
+      ['   • CUENTAS VENCIDAS debe ser un número entero (sin decimales).'],
+      ['   • Si no hay valor, dejar la celda vacía (se interpretará como 0).'],
+      [''],
+      ['3. COLUMNAS (respetar este orden):'],
+      ['   • Columna A: CICLO (texto)'],
+      ['   • Columna B: CONTRATO (texto)'],
+      ['   • Columna C: DIRECCION (texto)'],
+      ['   • Columna D: CAUSAL DEVOLUCION (texto)'],
+      ['   • Columna E: CUENTAS VENCIDAS (número)'],
+      ['   • Columna F: VERIFICACION (texto)'],
+      [''],
+      ['4. VALORES PERMITIDOS PARA CAUSAL DEVOLUCION:'],
+      ...CAUSALES_DEVOLUCION.map(c => [`   • ${c}`]),
+      [''],
+      ['5. VALORES PERMITIDOS PARA VERIFICACION:'],
+      ...OPCIONES_VERIFICACION.map(o => [`   • ${o}`]),
+      [''],
+      ['6. IMPORTANTE:'],
+      ['   • La combinación ciclo + contrato no necesita ser única; se insertarán como nuevos registros.'],
+      ['   • Si desea actualizar un registro existente, deberá usar el ID (no soportado en carga masiva).'],
+    ];
+    const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo);
+    wsInstructivo['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo');
+
+    // --- Hoja 2: Ejemplo con datos ---
+    const ejemploHeader = ['CICLO', 'CONTRATO', 'DIRECCION', 'CAUSAL DEVOLUCION', 'CUENTAS VENCIDAS', 'VERIFICACION'];
+    const ejemploData = [
+      ['40', 'CT-001', 'Calle 123', '8 - No Reciben', '150000', 'Devolucion Correcta'],
+      ['42', 'CT-002', 'Carrera 50', '5 - No Existe Direccion', '0', 'Devolucion Incorrecta'],
+      ['45', 'CT-003', 'Avenida Siempre Viva', 'Otro', '75000', 'No es Posible Determinar'],
+    ];
+    const wsEjemplo = XLSX.utils.aoa_to_sheet([ejemploHeader, ...ejemploData]);
+    wsEjemplo['!cols'] = [
+      { wch: 10 }, // CICLO
+      { wch: 15 }, // CONTRATO
+      { wch: 30 }, // DIRECCION
+      { wch: 25 }, // CAUSAL
+      { wch: 15 }, // CUENTAS
+      { wch: 25 }, // VERIFICACION
+    ];
+    XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo');
+
+    // --- Hoja 3: Plantilla vacía (solo encabezados) ---
+    const wsPlantilla = XLSX.utils.aoa_to_sheet([ejemploHeader]);
+    wsPlantilla['!cols'] = wsEjemplo['!cols'];
+    XLSX.utils.book_append_sheet(wb, wsPlantilla, 'Plantilla');
+
+    XLSX.writeFile(wb, 'plantilla_devoluciones.xlsx');
+  };
+
+  // Función para exportar datos actuales a Excel
   const exportarExcel = async () => {
     try {
       setExporting(true)
@@ -476,8 +540,12 @@ export default function Devoluciones({ onBack, rol }) {
 
       {/* Botones de acción */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+        {/* NUEVO BOTÓN DE DESCARGA DE PLANTILLA */}
+        <button className="action-btn secondary" onClick={descargarPlantilla}>
+          📥 Descargar Plantilla
+        </button>
         <label className={`action-btn secondary ${exporting ? 'disabled' : ''}`}>
-          📥 Cargar Excel
+          📤 Cargar Excel
           <input
             type="file"
             accept=".xlsx,.xls,.csv"
@@ -513,7 +581,7 @@ export default function Devoluciones({ onBack, rol }) {
         </button>
       </div>
 
-      {/* Modal de estadísticas */}
+      {/* Modal de estadísticas (sin cambios) */}
       {showStatsModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
