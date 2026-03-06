@@ -140,6 +140,11 @@ export default function CiclosProcesados({ onBack, rol }) {
         porDia[r.fecha_procesamiento] = (porDia[r.fecha_procesamiento] || 0) + 1
       })
 
+      // Convertir a array con objetos Date y ordenar ascendente
+      const porDiaArray = Object.entries(porDia)
+        .map(([fecha, cantidad]) => ({ fecha: new Date(fecha), cantidad }))
+        .sort((a, b) => a.fecha - b.fecha)
+
       // Por mes (para registros)
       const porMes = {}
       const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -195,7 +200,7 @@ export default function CiclosProcesados({ onBack, rol }) {
 
       setStats({
         total: todos?.length || 0,
-        porDia: Object.entries(porDia).map(([f, c]) => ({ fecha: f, cantidad: c })),
+        porDia: porDiaArray,
         porMes: Object.values(porMes).sort((a,b) => a.key.localeCompare(b.key)).slice(-12),
         totalProcesado,
         totalOrdenes,
@@ -558,7 +563,7 @@ export default function CiclosProcesados({ onBack, rol }) {
                 {/* Gráfico 1: Cantidad por servicio (Acueducto vs Energía) */}
                 <div className="dashboard-card">
                   <h3>🔧 Cantidad por Servicio</h3>
-                  <div style={{ height: 250, display: 'flex', justifyContent: 'center' }}>
+                  <div style={{ height: 300, display: 'flex', justifyContent: 'center' }}>
                     <ResponsiveContainer width="70%" height="100%">
                       <PieChart>
                         <Pie
@@ -584,7 +589,7 @@ export default function CiclosProcesados({ onBack, rol }) {
                 {/* Gráfico 2: Órdenes generadas por mes */}
                 <div className="dashboard-card">
                   <h3>📈 Órdenes Generadas por Mes</h3>
-                  <div style={{ height: 250 }}>
+                  <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={stats.ordenesPorMes}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -601,7 +606,7 @@ export default function CiclosProcesados({ onBack, rol }) {
                 {/* Gráfico 3: Comparativo de causas (mes actual vs anterior) */}
                 <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
                   <h3>🔄 Comparativo de Causas (último mes vs anterior)</h3>
-                  <div style={{ height: 300 }}>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={stats.comparativoCausas}>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -616,26 +621,47 @@ export default function CiclosProcesados({ onBack, rol }) {
                   </div>
                 </div>
 
-                {/* Gráficos originales (por día y mes) los dejamos también */}
+                {/* Gráfico 4: Registros por Día (últimos 30) - con escala de tiempo */}
                 <div className="dashboard-card">
                   <h3>📅 Registros por Día (últimos 30)</h3>
-                  <div style={{ height: 250 }}>
+                  <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={stats.porDia}>
+                      <LineChart data={stats.porDia} margin={{ top: 5, right: 20, left: 0, bottom: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" tick={{ fontSize: 10 }} />
-                        <YAxis />
-                        <Tooltip />
+                        <XAxis
+                          dataKey="fecha"
+                          type="number"
+                          scale="time"
+                          domain={['auto', 'auto']}
+                          tickFormatter={(date) => {
+                            const d = new Date(date);
+                            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+                          }}
+                          interval={0}
+                          angle={-60}
+                          textAnchor="end"
+                          height={80}
+                          tick={{ fontSize: 10 }}
+                        />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip
+                          labelFormatter={(label) => {
+                            const d = new Date(label);
+                            return `Fecha: ${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                          }}
+                          formatter={(value) => [`${value} registros`, 'Cantidad']}
+                        />
                         <Legend />
-                        <Line type="monotone" dataKey="cantidad" stroke="#8b5cf6" strokeWidth={2} />
+                        <Line type="monotone" dataKey="cantidad" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
+                {/* Gráfico 5: Registros por Mes */}
                 <div className="dashboard-card">
                   <h3>📊 Registros por Mes</h3>
-                  <div style={{ height: 250 }}>
+                  <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.porMes}>
                         <CartesianGrid strokeDasharray="3 3" />

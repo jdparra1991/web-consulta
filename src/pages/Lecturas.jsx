@@ -73,7 +73,7 @@ export default function Lecturas({ onBack, rol }) {
   }, [])
 
   /* =======================
-     EXPORTAR EXCEL REAL
+     EXPORTAR EXCEL REAL (con transformación de evidencias_imagenes)
   ======================= */
   async function exportarExcel() {
     let query = supabase.from('lecturas').select('*')
@@ -84,7 +84,16 @@ export default function Lecturas({ onBack, rol }) {
     if (fechaHasta) query = query.lte('created_at', fechaHasta)
 
     const { data } = await query
-    exportToExcel(data, 'lecturas')
+
+    // Convertir el array de imágenes a string (separado por comas)
+    const datosParaExcel = data.map(item => ({
+      ...item,
+      evidencias_imagenes: Array.isArray(item.evidencias_imagenes)
+        ? item.evidencias_imagenes.join(', ')
+        : item.evidencias_imagenes
+    }))
+
+    exportToExcel(datosParaExcel, 'lecturas')
   }
 
   /* =======================

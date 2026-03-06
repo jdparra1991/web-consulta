@@ -10,7 +10,8 @@ export default function Home({ onSelect, onLogout, userEmail, rol }) {
         { id: 'programacion-diaria', titulo: '📅 Programación Diaria', descripcion: 'Asignación de actividades diarias', color: '#8b5cf6' },
         { id: 'analisis-causas', titulo: '🔍 Análisis de Causas', descripcion: 'Análisis de causas raíz', color: '#06b6d4' },
         { id: 'ciclos-procesados', titulo: '✅ Ciclos Procesados', descripcion: 'Ciclos procesados y órdenes', color: '#14b8a6' },
-        { id: 'ami', titulo: '📊 AMI', descripcion: 'Análisis de medidores inteligentes', color: '#8b5cf6' }
+        { id: 'ami', titulo: '📊 AMI', descripcion: 'Análisis de medidores inteligentes', color: '#8b5cf6' },
+        { id: 'kpi-mensual', titulo: '📊 KPI Mensual', descripcion: 'Desempeño diario y mensual', color: '#8b5cf6' }
       ]
     },
     revisiones: {

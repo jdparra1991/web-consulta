@@ -11,10 +11,6 @@ import {
   Legend,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  Cell,
-  LabelList
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
@@ -298,7 +294,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       // 1. Datos del período filtrado (para totales, facturas por servicio, registros por día, resultados digitales)
       let queryPeriodo = supabase
         .from('alistamiento_facturas')
-        .select('tipo_servicio, mes_trabajo, cantidad_facturas, cantidad_anexos, cantidad_paquetes, ' +
+        .select('tipo_servicio, mes_trabajo, created_at, cantidad_facturas, cantidad_anexos, cantidad_paquetes, ' +
           RESULTADOS_DIGITALES.map(r => r.id).join(','))
         .gte('mes_trabajo', filters.fecha_desde)
         .lte('mes_trabajo', filters.fecha_hasta)
@@ -321,13 +317,21 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         const servicio = r.tipo_servicio
         facturasPorServicio[servicio] = (facturasPorServicio[servicio] || 0) + (r.cantidad_facturas || 0)
 
-        const fecha = r.mes_trabajo
-        registrosPorDia[fecha] = (registrosPorDia[fecha] || 0) + 1
+        // Agrupar por fecha de creación (zona horaria Colombia)
+        const fechaCreacion = new Date(r.created_at)
+        const fechaColombia = new Date(fechaCreacion.getTime() - (5 * 60 * 60 * 1000))
+        const fechaKey = fechaColombia.toISOString().split('T')[0] // YYYY-MM-DD
+        registrosPorDia[fechaKey] = (registrosPorDia[fechaKey] || 0) + 1
 
         RESULTADOS_DIGITALES.forEach(res => {
           resultados[res.id] += r[res.id] || 0
         })
       })
+
+      // Convertir registrosPorDia a array con objetos Date y ordenar ascendente (más antiguo a más reciente)
+      const registrosArray = Object.entries(registrosPorDia)
+        .map(([fecha, cantidad]) => ({ fecha: new Date(fecha), cantidad }))
+        .sort((a, b) => a.fecha - b.fecha)
 
       // 2. Datos para facturas por mes (últimos 12 meses) - sin filtro de fecha
       const hace12Meses = new Date()
@@ -366,7 +370,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
           nombre: NOMBRES_SERVICIO[s] || s,
           cantidad: c
         })),
-        registrosPorDia: Object.entries(registrosPorDia).map(([f, c]) => ({ fecha: f, cantidad: c })),
+        registrosPorDia: registrosArray,
         facturasPorMes: facturasPorMesArray,
         resultadosDigitales: RESULTADOS_DIGITALES.map(r => ({ nombre: r.nombre, cantidad: resultados[r.id] }))
       })
@@ -730,38 +734,38 @@ export default function AlistamientoFacturas({ onBack, rol }) {
   }
 
   async function guardarExcel() {
-  setLoading(true);
-  try {
-    const user = (await supabase.auth.getUser()).data.user;
-    const toInsert = excelData.map(r => ({
-      ...r,
-      user_id: user?.id,
-      paquetes: JSON.parse(r.paquetes) // si viene como string
-    }));
-    
-    const { error } = await supabase
-      .from('alistamiento_facturas')
-      .upsert(toInsert, { 
-        onConflict: 'ciclo_id, mes_trabajo',
-        ignoreDuplicates: false // false = actualiza, true = ignora
-      });
+    setLoading(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      const toInsert = excelData.map(r => ({
+        ...r,
+        user_id: user?.id,
+        paquetes: JSON.parse(r.paquetes) // si viene como string
+      }));
+      
+      const { error } = await supabase
+        .from('alistamiento_facturas')
+        .upsert(toInsert, { 
+          onConflict: 'ciclo_id, mes_trabajo',
+          ignoreDuplicates: false // false = actualiza, true = ignora
+        });
 
-    if (error) throw error;
-    
-    setShowExcelModal(false);
-    setExcelData([]);
-    setExcelPreview([]);
-    await cargarItems();
-    await cargarEstadisticas();
-    await calcularControlCiclos();
-    alert(`✅ ${toInsert.length} registros procesados (insertados/actualizados)`);
-  } catch (error) {
-    console.error('Error guardando Excel:', error);
-    alert('Error al cargar Excel: ' + error.message);
-  } finally {
-    setLoading(false);
+      if (error) throw error;
+      
+      setShowExcelModal(false);
+      setExcelData([]);
+      setExcelPreview([]);
+      await cargarItems();
+      await cargarEstadisticas();
+      await calcularControlCiclos();
+      alert(`✅ ${toInsert.length} registros procesados (insertados/actualizados)`);
+    } catch (error) {
+      console.error('Error guardando Excel:', error);
+      alert('Error al cargar Excel: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   function editar(item) {
     setFormData({
@@ -846,6 +850,13 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       usuario: ''
     })
     setPage(1)
+  }
+
+  // Formatear fecha para mostrar en eje X (DD/MM)
+  const formatearFechaEje = (fechaStr) => {
+    if (!fechaStr) return '';
+    const [año, mes, dia] = fechaStr.split('-');
+    return `${dia}/${mes}`;
   }
 
   return (
@@ -995,83 +1006,90 @@ export default function AlistamientoFacturas({ onBack, rol }) {
               <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ overflowY: 'auto' }}>
-              <div className="charts-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 
-                {/* Gráfico de barras: Facturas por Servicio */}
+                {/* Gráfico 1: Facturas por Servicio */}
                 <div className="dashboard-card">
                   <h3>🧾 Facturas por Servicio (período)</h3>
-                  <div style={{ height: 250 }}>
+                  <div style={{ height: 400 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.facturasPorServicio}>
+                      <BarChart data={stats.facturasPorServicio} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="nombre" />
                         <YAxis tickFormatter={formatearNumero} />
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]}>
-                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
-                        </Bar>
+                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Gráfico de líneas: Registros por Día */}
+                {/* Gráfico 2: Registros por Día - con escala de tiempo para orden correcto */}
                 <div className="dashboard-card">
-                  <h3>📅 Registros por Día (período)</h3>
-                  <div style={{ height: 250 }}>
+                  <h3>📅 Registros por Día (período) - por fecha de creación</h3>
+                  <div style={{ height: 400 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={stats.registrosPorDia}>
+                      <LineChart data={stats.registrosPorDia} margin={{ top: 5, right: 20, left: 0, bottom: 80 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" tick={{ fontSize: 10 }} />
-                        <YAxis />
-                        <Tooltip />
+                        <XAxis
+                          dataKey="fecha"
+                          type="number"
+                          scale="time"
+                          domain={['auto', 'auto']}
+                          tickFormatter={(date) => {
+                            const d = new Date(date);
+                            return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+                          }}
+                          interval={0}
+                          angle={-60}
+                          textAnchor="end"
+                          height={90}
+                          tick={{ fontSize: 10 }}
+                        />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip
+                          labelFormatter={(label) => {
+                            const d = new Date(label);
+                            return `Fecha: ${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                          }}
+                          formatter={(value) => [`${value} registros`, 'Cantidad']}
+                        />
                         <Legend />
-                        <Line type="monotone" dataKey="cantidad" stroke="#f59e0b" strokeWidth={2}>
-                          <LabelList dataKey="cantidad" position="top" />
-                        </Line>
+                        <Line type="monotone" dataKey="cantidad" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Gráfico de líneas: Facturas por Mes (últimos 12 meses) */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
+                {/* Gráfico 3: Facturas por Mes (últimos 12 meses) */}
+                <div className="dashboard-card">
                   <h3>📊 Facturas por Mes (últimos 12 meses)</h3>
-                  <div style={{ height: 250 }}>
+                  <div style={{ height: 400 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={stats.facturasPorMes}>
+                      <LineChart data={stats.facturasPorMes} margin={{ top: 10, right: 30, left: 0, bottom: 70 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
+                        <XAxis
+                          dataKey="mes"
+                          tickFormatter={(mes) => {
+                            const [año, mesNum] = mes.split('-');
+                            return `${mesNum}/${año.slice(2)}`;
+                          }}
+                          interval={0}
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          tick={{ fontSize: 11 }}
+                        />
                         <YAxis tickFormatter={formatearNumero} />
-                        <Tooltip formatter={(value) => formatearNumero(value)} />
+                        <Tooltip
+                          labelFormatter={(label) => `Mes: ${label}`}
+                          formatter={(value) => formatearNumero(value)}
+                        />
                         <Legend />
-                        <Line type="monotone" dataKey="publicas" stroke="#3b82f6" name="Servicios Públicos" strokeWidth={2}>
-                          <LabelList dataKey="publicas" position="top" formatter={formatearNumero} />
-                        </Line>
-                        <Line type="monotone" dataKey="telecom" stroke="#f59e0b" name="Telecomunicaciones" strokeWidth={2}>
-                          <LabelList dataKey="telecom" position="top" formatter={formatearNumero} />
-                        </Line>
+                        <Line type="monotone" dataKey="publicas" stroke="#3b82f6" name="Servicios Públicos" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="telecom" stroke="#f59e0b" name="Telecomunicaciones" strokeWidth={2} dot={{ r: 3 }} />
                       </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Gráfico de barras horizontales: Resultados Digitales */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
-                  <h3>📧 Resultados de Facturas Digitales</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.resultadosDigitales} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" tickFormatter={formatearNumero} />
-                        <YAxis dataKey="nombre" type="category" width={150} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(value) => formatearNumero(value)} />
-                        <Legend />
-                        <Bar dataKey="cantidad" fill="#8b5cf6" radius={[0,4,4,0]}>
-                          <LabelList dataKey="cantidad" position="right" formatter={formatearNumero} />
-                        </Bar>
-                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>

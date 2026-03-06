@@ -19,6 +19,7 @@ import AlistamientoFacturas from './pages/AlistamientoFacturas'
 import AMI from './pages/AMI'
 import ProgramacionDiaria from './pages/ProgramacionDiaria'
 import ResultadosDigitales from './pages/ResultadosDigitales'
+import KPIMensual from './pages/KPIMensual'
 
 // Home
 import Home from './pages/Home'
@@ -165,7 +166,10 @@ export default function App() {
             <button className={page === 'ami' ? 'active' : ''} onClick={() => setPage('ami')}>
               📊 AMI
             </button>
-          </div>
+            <button className={page === 'kpi-mensual' ? 'active' : ''} onClick={() => setPage('kpi-mensual')}>
+            📊 KPI Mensual
+            </button>
+            </div>
 
           {/* Sección Revisiones */}
           <div className="sidebar-section">
@@ -228,6 +232,7 @@ export default function App() {
         {page === 'ami' && <AMI rol={rol} onBack={handleBackToHome} />}
         {page === 'programacion-diaria' && <ProgramacionDiaria rol={rol} onBack={handleBackToHome} />}
         {page === 'resultados-digitales' && <ResultadosDigitales rol={rol} onBack={handleBackToHome} />}
+        {page === 'kpi-mensual' && <KPIMensual onBack={handleBackToHome} />}
       </main>
     </div>
   )

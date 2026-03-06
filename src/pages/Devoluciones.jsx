@@ -32,7 +32,9 @@ const CAUSALES_DEVOLUCION = [
 const OPCIONES_VERIFICACION = [
   'Devolucion Correcta',
   'Devolucion Incorrecta',
-  'No es Posible Determinar'
+  'No es Posible Determinar',
+  'Sector Peligroso',
+  'Rural'
 ]
 
 // Función para formatear números

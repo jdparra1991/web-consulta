@@ -76,9 +76,10 @@ export default function ResultadosDigitales({ onBack, rol }) {
   const [excelPreview, setExcelPreview] = useState([])
   const [stats, setStats] = useState({
     totalRegistros: 0,
-    porCiclo: [],
-    porMes: [],
-    porResultado: []
+    porCicloPublicos: [],
+    porCicloTelecom: [],
+    porResultadoPublicos: [],
+    porResultadoTelecom: []
   })
   const [filters, setFilters] = useState({
     fecha_desde: obtenerInicioMes(),
@@ -151,97 +152,114 @@ export default function ResultadosDigitales({ onBack, rol }) {
       const { data, error } = await query
       if (error) throw error
 
-      const porCiclo = {}
-      const porResultado = {}
-      RESULTADOS_DIGITALES.forEach(r => porResultado[r.id] = 0)
+      // Inicializar acumuladores
+      const porCicloPublicos = {}
+      const porCicloTelecom = {}
+      const porResultadoPublicos = {}
+      const porResultadoTelecom = {}
+      RESULTADOS_DIGITALES.forEach(r => {
+        porResultadoPublicos[r.id] = 0
+        porResultadoTelecom[r.id] = 0
+      })
 
       data?.forEach(r => {
-        // Por ciclo (suma de todos los resultados)
-        if (r.ciclo_id) {
-          const suma = RESULTADOS_DIGITALES.reduce((acc, res) => acc + (r[res.id] || 0), 0)
-          porCiclo[r.ciclo_id] = (porCiclo[r.ciclo_id] || 0) + suma
+        const ciclo = r.ciclo_id
+        const esPublico = ciclo < 100
+        const esTelecom = ciclo >= 100
+
+        // Suma total por ciclo (para gráficos de cantidad por ciclo)
+        const sumaTotal = RESULTADOS_DIGITALES.reduce((acc, res) => acc + (r[res.id] || 0), 0)
+        if (esPublico) {
+          porCicloPublicos[ciclo] = (porCicloPublicos[ciclo] || 0) + sumaTotal
+        } else if (esTelecom) {
+          porCicloTelecom[ciclo] = (porCicloTelecom[ciclo] || 0) + sumaTotal
         }
 
-        // Por tipo de resultado
+        // Por tipo de resultado, separado por servicio
         RESULTADOS_DIGITALES.forEach(res => {
-          porResultado[res.id] += r[res.id] || 0
+          if (esPublico) {
+            porResultadoPublicos[res.id] += r[res.id] || 0
+          } else if (esTelecom) {
+            porResultadoTelecom[res.id] += r[res.id] || 0
+          }
         })
       })
 
       setStats({
         totalRegistros: data?.length || 0,
-        porCiclo: Object.entries(porCiclo).map(([c, v]) => ({ ciclo: c, cantidad: v })),
-        porResultado: RESULTADOS_DIGITALES.map(r => ({ nombre: r.nombre, cantidad: porResultado[r.id] })),
-        porMes: [] // opcional, se puede agregar más adelante
+        porCicloPublicos: Object.entries(porCicloPublicos).map(([c, v]) => ({ ciclo: c, cantidad: v })),
+        porCicloTelecom: Object.entries(porCicloTelecom).map(([c, v]) => ({ ciclo: c, cantidad: v })),
+        porResultadoPublicos: RESULTADOS_DIGITALES.map(r => ({ nombre: r.nombre, cantidad: porResultadoPublicos[r.id] })),
+        porResultadoTelecom: RESULTADOS_DIGITALES.map(r => ({ nombre: r.nombre, cantidad: porResultadoTelecom[r.id] }))
       })
     } catch (error) {
       console.error('Error cargando estadísticas:', error)
     }
   }
 
-const descargarPlantilla = () => {
-  const wb = XLSX.utils.book_new();
+  const descargarPlantilla = () => {
+    const wb = XLSX.utils.book_new();
 
-  // --- Hoja 1: Instructivo (estático) ---
-  const instructivo = [
-    ['INSTRUCTIVO PARA CARGA DE RESULTADOS DIGITALES'],
-    [''],
-    ['1. FORMATO DE FECHAS:'],
-    ['   • mes_trabajo debe estar en formato YYYY-MM-DD (ej: 2026-02-01).'],
-    ['   • La fecha debe corresponder al primer día del mes de vigencia (siempre día 01).'],
-    [''],
-    ['2. CAMPOS NUMÉRICOS:'],
-    ['   • Todos los campos de resultados deben ser números enteros (sin decimales).'],
-    ['   • Si no hay registros para un resultado, colocar 0 o dejar la celda vacía (se interpretará como 0).'],
-    [''],
-    ['3. COLUMNAS (respetar este orden):'],
-    ['   • Columna A: ciclo_id (número entero)'],
-    ['   • Columna B: mes_trabajo (fecha en formato YYYY-MM-DD)'],
-    ['   • Columna C: buzones_inactivo'],
-    ['   • Columna D: buzones_lleno'],
-    ['   • Columna E: buzones_no_existe'],
-    ['   • Columna F: correo_mal_escrito'],
-    ['   • Columna G: dominio_no_existe'],
-    ['   • Columna H: enviados'],
-    ['   • Columna I: rechazado_varios_intentos'],
-    ['   • Columna J: reporta_spam'],
-    ['   • Columna K: sin_adjunto'],
-    ['   • Columna L: servidor_destino_no_responde'],
-    [''],
-    ['4. IMPORTANTE:'],
-    ['   • La combinación ciclo_id + mes_trabajo debe ser única.'],
-    ['   • Si ya existe un registro con el mismo ciclo y mes, se actualizarán solo los campos incluidos en el archivo.'],
-    ['   • Los campos no incluidos conservarán su valor anterior.'],
-    [''],
-    ['5. EJEMPLO:'],
-    ['   • Ver la hoja "Ejemplo" para una muestra de datos correctos.'],
-  ];
-  const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo);
-  wsInstructivo['!cols'] = [{ wch: 80 }];
-  XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo');
+    // Hoja 1: Instructivo
+    const instructivo = [
+      ['INSTRUCTIVO PARA CARGA DE RESULTADOS DIGITALES'],
+      [''],
+      ['1. FORMATO DE FECHAS:'],
+      ['   • mes_trabajo debe estar en formato YYYY-MM-DD (ej: 2026-02-01).'],
+      ['   • La fecha debe corresponder al primer día del mes de vigencia (siempre día 01).'],
+      [''],
+      ['2. CAMPOS NUMÉRICOS:'],
+      ['   • Todos los campos de resultados deben ser números enteros (sin decimales).'],
+      ['   • Si no hay registros para un resultado, colocar 0 o dejar la celda vacía (se interpretará como 0).'],
+      [''],
+      ['3. COLUMNAS (respetar este orden):'],
+      ['   • Columna A: ciclo_id (número entero)'],
+      ['   • Columna B: mes_trabajo (fecha en formato YYYY-MM-DD)'],
+      ['   • Columna C: buzones_inactivo'],
+      ['   • Columna D: buzones_lleno'],
+      ['   • Columna E: buzones_no_existe'],
+      ['   • Columna F: correo_mal_escrito'],
+      ['   • Columna G: dominio_no_existe'],
+      ['   • Columna H: enviados'],
+      ['   • Columna I: rechazado_varios_intentos'],
+      ['   • Columna J: reporta_spam'],
+      ['   • Columna K: sin_adjunto'],
+      ['   • Columna L: servidor_destino_no_responde'],
+      [''],
+      ['4. IMPORTANTE:'],
+      ['   • La combinación ciclo_id + mes_trabajo debe ser única.'],
+      ['   • Si ya existe un registro con el mismo ciclo y mes, se actualizarán solo los campos incluidos en el archivo.'],
+      ['   • Los campos no incluidos conservarán su valor anterior.'],
+      [''],
+      ['5. EJEMPLO:'],
+      ['   • Ver la hoja "Ejemplo" para una muestra de datos correctos.'],
+    ];
+    const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo);
+    wsInstructivo['!cols'] = [{ wch: 80 }];
+    XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo');
 
-  // --- Hoja 2: Ejemplo con datos (usando RESULTADOS_DIGITALES) ---
-  const ejemploHeader = ['ciclo_id', 'mes_trabajo', ...RESULTADOS_DIGITALES.map(r => r.id)];
-  const ejemploData = [
-    ['40', '2026-02-01', '5', '2', '1', '0', '3', '120', '4', '2', '1', '0'],
-    ['42', '2026-02-01', '2', '1', '0', '1', '2', '85', '1', '0', '1', '1'],
-    ['45', '2026-02-01', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'],
-  ];
-  const wsEjemplo = XLSX.utils.aoa_to_sheet([ejemploHeader, ...ejemploData]);
-  wsEjemplo['!cols'] = [
-    { wch: 10 }, // ciclo_id
-    { wch: 12 }, // mes_trabajo
-    ...RESULTADOS_DIGITALES.map(() => ({ wch: 15 }))
-  ];
-  XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo');
+    // Hoja 2: Ejemplo
+    const ejemploHeader = ['ciclo_id', 'mes_trabajo', ...RESULTADOS_DIGITALES.map(r => r.id)];
+    const ejemploData = [
+      ['40', '2026-02-01', '5', '2', '1', '0', '3', '120', '4', '2', '1', '0'],
+      ['42', '2026-02-01', '2', '1', '0', '1', '2', '85', '1', '0', '1', '1'],
+      ['45', '2026-02-01', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'],
+    ];
+    const wsEjemplo = XLSX.utils.aoa_to_sheet([ejemploHeader, ...ejemploData]);
+    wsEjemplo['!cols'] = [
+      { wch: 10 }, // ciclo_id
+      { wch: 12 }, // mes_trabajo
+      ...RESULTADOS_DIGITALES.map(() => ({ wch: 15 }))
+    ];
+    XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo');
 
-  // --- Hoja 3: Plantilla vacía (solo encabezados) ---
-  const wsPlantilla = XLSX.utils.aoa_to_sheet([ejemploHeader]);
-  wsPlantilla['!cols'] = wsEjemplo['!cols'];
-  XLSX.utils.book_append_sheet(wb, wsPlantilla, 'Plantilla');
+    // Hoja 3: Plantilla vacía
+    const wsPlantilla = XLSX.utils.aoa_to_sheet([ejemploHeader]);
+    wsPlantilla['!cols'] = wsEjemplo['!cols'];
+    XLSX.utils.book_append_sheet(wb, wsPlantilla, 'Plantilla');
 
-  XLSX.writeFile(wb, 'plantilla_resultados_digitales.xlsx');
-};
+    XLSX.writeFile(wb, 'plantilla_resultados_digitales.xlsx');
+  };
 
   // Exportar datos actuales a Excel
   const exportarExcel = async () => {
@@ -483,39 +501,73 @@ const descargarPlantilla = () => {
               <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ overflowY: 'auto' }}>
-              <div className="charts-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 
-                {/* Gráfico: Cantidad por Ciclo */}
+                {/* Gráfico 1: Ciclos de Servicios Públicos (ID < 100) */}
                 <div className="dashboard-card">
-                  <h3>🔢 Cantidad por Ciclo</h3>
-                  <div style={{ height: 250 }}>
+                  <h3>🔵 Servicios Públicos - Cantidad por Ciclo</h3>
+                  <div style={{ height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porCiclo}>
+                      <BarChart data={stats.porCicloPublicos}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="ciclo" />
                         <YAxis tickFormatter={formatearNumero} />
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#8b5cf6" radius={[4,4,0,0]}>
-                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Gráfico 2: Ciclos de Telecomunicaciones (ID >= 100) */}
+                <div className="dashboard-card">
+                  <h3>🟠 Telecomunicaciones - Cantidad por Ciclo</h3>
+                  <div style={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.porCicloTelecom}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="ciclo" />
+                        <YAxis tickFormatter={formatearNumero} />
+                        <Tooltip formatter={(value) => formatearNumero(value)} />
+                        <Legend />
+                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Gráfico 3: Detalle por Resultado - Servicios Públicos */}
+                <div className="dashboard-card">
+                  <h3>🔵 Servicios Públicos - Detalle por Resultado</h3>
+                  <div style={{ height: 350 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.porResultadoPublicos} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" tickFormatter={formatearNumero} />
+                        <YAxis dataKey="nombre" type="category" width={150} tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(value) => formatearNumero(value)} />
+                        <Legend />
+                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[0,4,4,0]}>
+                          <LabelList dataKey="cantidad" position="right" formatter={formatearNumero} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* Gráfico de barras horizontales: Resultados Digitales */}
+                {/* Gráfico 4: Detalle por Resultado - Telecomunicaciones */}
                 <div className="dashboard-card">
-                  <h3>📊 Detalle por Resultado</h3>
-                  <div style={{ height: 300 }}>
+                  <h3>🟠 Telecomunicaciones - Detalle por Resultado</h3>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porResultado} layout="vertical">
+                      <BarChart data={stats.porResultadoTelecom} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis type="number" tickFormatter={formatearNumero} />
                         <YAxis dataKey="nombre" type="category" width={150} tick={{ fontSize: 11 }} />
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#14b8a6" radius={[0,4,4,0]}>
+                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[0,4,4,0]}>
                           <LabelList dataKey="cantidad" position="right" formatter={formatearNumero} />
                         </Bar>
                       </BarChart>
