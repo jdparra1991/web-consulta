@@ -15,17 +15,17 @@ import {
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
+import html2canvas from 'html2canvas' // <-- Nueva dependencia
 import '../index.css'
 
 const PAGE_SIZE = 10
-// Colores más suaves para los gráficos
 const COLORS = {
-  integracion: '#60a5fa', // azul claro
-  recuperados: '#fbbf24', // amarillo/ámbar
-  sinAccion: '#f87171',   // rojo claro
-  lineaIntegracion: '#3b82f6', // azul más fuerte para línea
-  lineaRecuperados: '#f59e0b', // naranja para línea
-  lineaSinAccion: '#ef4444'    // rojo para línea
+  integracion: '#60a5fa',
+  recuperados: '#fbbf24',
+  sinAccion: '#f87171',
+  lineaIntegracion: '#3b82f6',
+  lineaRecuperados: '#f59e0b',
+  lineaSinAccion: '#ef4444'
 }
 
 const formatearNumero = (num) => new Intl.NumberFormat('es-CO').format(num || 0)
@@ -68,7 +68,7 @@ export default function AMI({ onBack, rol }) {
 
   const [formData, setFormData] = useState({
     ciclo: '',
-    mes_vigencia: obtenerFechaColombia().slice(0, 7), // YYYY-MM
+    mes_vigencia: obtenerFechaColombia().slice(0, 7),
     fecha_reporte: obtenerFechaColombia(),
     total_enviados: 0,
     total_integracion: 0,
@@ -79,6 +79,7 @@ export default function AMI({ onBack, rol }) {
     observaciones: ''
   })
 
+  // Cálculos derivados para el formulario
   const totalSinAccion = Math.max(
     (formData.total_enviados || 0) - (formData.total_integracion || 0) - (formData.total_recuperados || 0),
     0
@@ -143,7 +144,6 @@ export default function AMI({ onBack, rol }) {
         totalRecuperados += r.total_recuperados || 0
         totalSinAccion += r.total_sin_accion || 0
 
-        // Por ciclo
         if (!porCiclo[r.ciclo]) {
           porCiclo[r.ciclo] = { ciclo: r.ciclo, enviados: 0, integracion: 0, recuperados: 0, sinAccion: 0, pctInt: 0, pctRec: 0, pctSin: 0 }
         }
@@ -152,7 +152,6 @@ export default function AMI({ onBack, rol }) {
         porCiclo[r.ciclo].recuperados += r.total_recuperados || 0
         porCiclo[r.ciclo].sinAccion += r.total_sin_accion || 0
 
-        // Por mes
         if (!porMes[r.mes_vigencia]) {
           porMes[r.mes_vigencia] = { mes: r.mes_vigencia, enviados: 0, integracion: 0, recuperados: 0, sinAccion: 0, pctInt: 0, pctRec: 0, pctSin: 0 }
         }
@@ -162,7 +161,7 @@ export default function AMI({ onBack, rol }) {
         porMes[r.mes_vigencia].sinAccion += r.total_sin_accion || 0
       })
 
-      // Calcular porcentajes para cada ciclo y mes
+      // Calcular porcentajes
       Object.values(porCiclo).forEach(c => {
         c.pctInt = c.enviados > 0 ? ((c.integracion / c.enviados) * 100).toFixed(1) : 0
         c.pctRec = c.enviados > 0 ? ((c.recuperados / c.enviados) * 100).toFixed(1) : 0
@@ -174,8 +173,8 @@ export default function AMI({ onBack, rol }) {
         m.pctSin = m.enviados > 0 ? ((m.sinAccion / m.enviados) * 100).toFixed(1) : 0
       })
 
-      // Ordenar ciclos por número de ciclo
       const ciclosOrdenados = Object.values(porCiclo).sort((a,b) => a.ciclo - b.ciclo)
+      const mesesOrdenados = Object.values(porMes).sort((a,b) => a.mes.localeCompare(b.mes))
 
       setStats({
         totalRegistros: data?.length || 0,
@@ -184,12 +183,37 @@ export default function AMI({ onBack, rol }) {
         totalRecuperados,
         totalSinAccion,
         porCiclo: ciclosOrdenados,
-        porMes: Object.values(porMes).sort((a,b) => a.mes.localeCompare(b.mes))
+        porMes: mesesOrdenados
       })
     } catch (error) {
       console.error('Error cargando estadísticas AMI:', error)
     }
   }
+
+  // Función para descargar gráfico como PNG
+  const descargarGrafico = async (elementId, nombreArchivo) => {
+  const elemento = document.getElementById(elementId);
+  if (!elemento) {
+    alert('No se encontró el gráfico');
+    return;
+  }
+  try {
+    const canvas = await html2canvas(elemento, {
+      scale: 2, // mayor resolución
+      backgroundColor: '#ffffff',
+      logging: false,
+      allowTaint: false,
+      useCORS: true
+    });
+    const enlace = document.createElement('a');
+    enlace.download = `${nombreArchivo}.png`;
+    enlace.href = canvas.toDataURL('image/png');
+    enlace.click();
+  } catch (error) {
+    console.error('Error al descargar gráfico:', error);
+    alert('Error al generar la imagen');
+  }
+};
 
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new()
@@ -289,6 +313,21 @@ export default function AMI({ onBack, rol }) {
     setLoading(true)
     try {
       const user = (await supabase.auth.getUser()).data.user
+      // Calcular los campos derivados antes de guardar
+      const totalSinAccionCalc = Math.max(
+        (formData.total_enviados || 0) - (formData.total_integracion || 0) - (formData.total_recuperados || 0),
+        0
+      )
+      const porcentajeIntegracionCalc = formData.total_enviados > 0
+        ? ((formData.total_integracion / formData.total_enviados) * 100).toFixed(1)
+        : 0
+      const porcentajeRecuperadosCalc = formData.total_enviados > 0
+        ? ((formData.total_recuperados / formData.total_enviados) * 100).toFixed(1)
+        : 0
+      const porcentajeSinLecturaCalc = formData.total_enviados > 0
+        ? ((totalSinAccionCalc / formData.total_enviados) * 100).toFixed(1)
+        : 0
+
       const data = {
         ciclo: parseInt(formData.ciclo),
         mes_vigencia: formData.mes_vigencia,
@@ -296,6 +335,10 @@ export default function AMI({ onBack, rol }) {
         total_enviados: formData.total_enviados,
         total_integracion: formData.total_integracion,
         total_recuperados: formData.total_recuperados,
+        total_sin_accion: totalSinAccionCalc,
+        porcentaje_integracion: parseFloat(porcentajeIntegracionCalc),
+        porcentaje_recuperados: parseFloat(porcentajeRecuperadosCalc),
+        porcentaje_sin_lectura: parseFloat(porcentajeSinLecturaCalc),
         archivo_enviados: formData.archivo_enviados || null,
         archivo_integracion: formData.archivo_integracion || null,
         archivo_recuperados: formData.archivo_recuperados || null,
@@ -373,11 +416,32 @@ export default function AMI({ onBack, rol }) {
     setLoading(true)
     try {
       const user = (await supabase.auth.getUser()).data.user
-      const toInsert = excelData.map(r => ({
-        ...r,
-        creado_por_id: user?.id,
-        creado_por_nombre: user?.email
-      }))
+      // Preparar datos con campos calculados
+      const toInsert = excelData.map(r => {
+        const totalSinAccionCalc = Math.max(
+          (r.total_enviados || 0) - (r.total_integracion || 0) - (r.total_recuperados || 0),
+          0
+        )
+        const porcentajeIntegracionCalc = r.total_enviados > 0
+          ? ((r.total_integracion / r.total_enviados) * 100).toFixed(1)
+          : 0
+        const porcentajeRecuperadosCalc = r.total_enviados > 0
+          ? ((r.total_recuperados / r.total_enviados) * 100).toFixed(1)
+          : 0
+        const porcentajeSinLecturaCalc = r.total_enviados > 0
+          ? ((totalSinAccionCalc / r.total_enviados) * 100).toFixed(1)
+          : 0
+
+        return {
+          ...r,
+          total_sin_accion: totalSinAccionCalc,
+          porcentaje_integracion: parseFloat(porcentajeIntegracionCalc),
+          porcentaje_recuperados: parseFloat(porcentajeRecuperadosCalc),
+          porcentaje_sin_lectura: parseFloat(porcentajeSinLecturaCalc),
+          creado_por_id: user?.id,
+          creado_por_nombre: user?.email
+        }
+      })
       const { error } = await supabase.from('ami_reportes').insert(toInsert)
       if (error) throw error
       setShowExcelModal(false)
@@ -508,193 +572,165 @@ export default function AMI({ onBack, rol }) {
         </button>
       </div>
 
-      {/* Modal de estadísticas */}
+      {/* Modal de estadísticas con scroll horizontal y botones de descarga */}
       {showStatsModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
-            <div className="modal-header">
-              <h2>📊 Estadísticas AMI</h2>
-              <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
+  <div className="modal-overlay">
+    <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
+      <div className="modal-header">
+        <h2>📊 Estadísticas AMI</h2>
+        <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
+      </div>
+      <div className="modal-body" style={{ overflowY: 'auto' }}>
+        <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+          {/* Gráfico de barras: Totales por Ciclo */}
+          <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>📊 Totales por Ciclo</h3>
+              <button 
+                className="icon-btn" 
+                onClick={() => descargarGrafico('grafico-barras-ciclos', 'totales_por_ciclo')}
+                title="Descargar PNG"
+              >
+                📸
+              </button>
             </div>
-            <div className="modal-body" style={{ overflowY: 'auto' }}>
-              <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                
-                {/* Gráfico de columnas: Totales por Ciclo (barras independientes) */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
-                  <h3>📊 Totales por Ciclo</h3>
-                  <div style={{ width: '100%', overflowX: 'auto' }}>
-                    <div style={{ width: Math.max(800, stats.porCiclo.length * 60) }}> {/* Ancho dinámico según cantidad de ciclos */}
-                      <ResponsiveContainer width="100%" height={350}>
-                        <BarChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis 
-                            dataKey="ciclo" 
-                            angle={-45} 
-                            textAnchor="end" 
-                            height={70} 
-                            interval={0}
-                            tick={{ fontSize: 11 }}
-                          />
-                          <YAxis tickFormatter={formatearNumero} />
-                          <Tooltip formatter={(value) => formatearNumero(value)} />
-                          <Legend wrapperStyle={{ fontSize: 12 }} />
-                          <Bar 
-                            dataKey="integracion" 
-                            fill={COLORS.integracion} 
-                            name="Integración" 
-                            radius={[4,4,0,0]}
-                          >
-                            <LabelList 
-                              dataKey="integracion" 
-                              position="top" 
-                              fontSize={10} 
-                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
-                            />
-                          </Bar>
-                          <Bar 
-                            dataKey="recuperados" 
-                            fill={COLORS.recuperados} 
-                            name="Recuperados" 
-                            radius={[4,4,0,0]}
-                          >
-                            <LabelList 
-                              dataKey="recuperados" 
-                              position="top" 
-                              fontSize={10} 
-                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
-                            />
-                          </Bar>
-                          <Bar 
-                            dataKey="sinAccion" 
-                            fill={COLORS.sinAccion} 
-                            name="Sin Acción" 
-                            radius={[4,4,0,0]}
-                          >
-                            <LabelList 
-                              dataKey="sinAccion" 
-                              position="top" 
-                              fontSize={10} 
-                              formatter={(v) => v > 0 ? formatearNumero(v) : ''} 
-                            />
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Gráfico de líneas: Porcentajes por Ciclo */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
-                  <h3>📈 Porcentajes por Ciclo</h3>
-                  <div style={{ width: '100%', overflowX: 'auto' }}>
-                    <div style={{ width: Math.max(800, stats.porCiclo.length * 60) }}>
-                      <ResponsiveContainer width="100%" height={350}>
-                        <LineChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis 
-                            dataKey="ciclo" 
-                            angle={-45} 
-                            textAnchor="end" 
-                            height={70} 
-                            interval={0}
-                            tick={{ fontSize: 11 }}
-                          />
-                          <YAxis domain={[0, 100]} tickFormatter={(v) => v + '%'} />
-                          <Tooltip formatter={(value) => value + '%'} />
-                          <Legend wrapperStyle={{ fontSize: 12 }} />
-                          <Line 
-                            type="monotone" 
-                            dataKey="pctInt" 
-                            stroke={COLORS.lineaIntegracion} 
-                            name="% Integración" 
-                            strokeWidth={2} 
-                            dot={{ r: 3 }}
-                          >
-                            <LabelList dataKey="pctInt" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
-                          </Line>
-                          <Line 
-                            type="monotone" 
-                            dataKey="pctRec" 
-                            stroke={COLORS.lineaRecuperados} 
-                            name="% Recuperados" 
-                            strokeWidth={2} 
-                            dot={{ r: 3 }}
-                          >
-                            <LabelList dataKey="pctRec" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
-                          </Line>
-                          <Line 
-                            type="monotone" 
-                            dataKey="pctSin" 
-                            stroke={COLORS.lineaSinAccion} 
-                            name="% Sin Acción" 
-                            strokeWidth={2} 
-                            dot={{ r: 3 }}
-                          >
-                            <LabelList dataKey="pctSin" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
-                          </Line>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Gráfico de líneas: Evolución Mensual */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
-                  <h3>📅 Evolución Mensual</h3>
-                  <div style={{ width: '100%', overflowX: 'auto' }}>
-                    <div style={{ width: Math.max(800, stats.porMes.length * 80) }}>
-                      <ResponsiveContainer width="100%" height={350}>
-                        <LineChart data={stats.porMes} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                          <YAxis tickFormatter={formatearNumero} />
-                          <Tooltip formatter={(value) => formatearNumero(value)} />
-                          <Legend wrapperStyle={{ fontSize: 12 }} />
-                          <Line 
-                            type="monotone" 
-                            dataKey="integracion" 
-                            stroke={COLORS.lineaIntegracion} 
-                            name="Integración" 
-                            strokeWidth={2} 
-                            dot={{ r: 4 }}
-                          >
-                            <LabelList dataKey="integracion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
-                          </Line>
-                          <Line 
-                            type="monotone" 
-                            dataKey="recuperados" 
-                            stroke={COLORS.lineaRecuperados} 
-                            name="Recuperados" 
-                            strokeWidth={2} 
-                            dot={{ r: 4 }}
-                          >
-                            <LabelList dataKey="recuperados" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
-                          </Line>
-                          <Line 
-                            type="monotone" 
-                            dataKey="sinAccion" 
-                            stroke={COLORS.lineaSinAccion} 
-                            name="Sin Acción" 
-                            strokeWidth={2} 
-                            dot={{ r: 4 }}
-                          >
-                            <LabelList dataKey="sinAccion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
-                          </Line>
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+              <div 
+                id="grafico-barras-ciclos" 
+                style={{ 
+                  minWidth: Math.max(600, stats.porCiclo.length * 50), 
+                  height: 350 
+                }}
+              >
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="ciclo"
+                      angle={-45}
+                      textAnchor="end"
+                      height={70}
+                      interval={0}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis tickFormatter={formatearNumero} />
+                    <Tooltip formatter={(value) => formatearNumero(value)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="integracion" fill={COLORS.integracion} name="Integración" radius={[4,4,0,0]}>
+                      <LabelList dataKey="integracion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Bar>
+                    <Bar dataKey="recuperados" fill={COLORS.recuperados} name="Recuperados" radius={[4,4,0,0]}>
+                      <LabelList dataKey="recuperados" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Bar>
+                    <Bar dataKey="sinAccion" fill={COLORS.sinAccion} name="Sin Acción" radius={[4,4,0,0]}>
+                      <LabelList dataKey="sinAccion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="primary-btn" onClick={() => setShowStatsModal(false)}>Cerrar</button>
+          </div>
+
+          {/* Gráfico de líneas: Porcentajes por Ciclo */}
+          <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>📈 Porcentajes por Ciclo</h3>
+              <button 
+                className="icon-btn" 
+                onClick={() => descargarGrafico('grafico-lineas-ciclos', 'porcentajes_por_ciclo')}
+                title="Descargar PNG"
+              >
+                📸
+              </button>
+            </div>
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+              <div 
+                id="grafico-lineas-ciclos" 
+                style={{ 
+                  minWidth: Math.max(600, stats.porCiclo.length * 50), 
+                  height: 350 
+                }}
+              >
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={stats.porCiclo} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="ciclo"
+                      angle={-45}
+                      textAnchor="end"
+                      height={70}
+                      interval={0}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis domain={[0, 100]} tickFormatter={(v) => v + '%'} />
+                    <Tooltip formatter={(value) => value + '%'} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="pctInt" stroke={COLORS.lineaIntegracion} name="% Integración" strokeWidth={2} dot={{ r: 3 }}>
+                      <LabelList dataKey="pctInt" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                    </Line>
+                    <Line type="monotone" dataKey="pctRec" stroke={COLORS.lineaRecuperados} name="% Recuperados" strokeWidth={2} dot={{ r: 3 }}>
+                      <LabelList dataKey="pctRec" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                    </Line>
+                    <Line type="monotone" dataKey="pctSin" stroke={COLORS.lineaSinAccion} name="% Sin Acción" strokeWidth={2} dot={{ r: 3 }}>
+                      <LabelList dataKey="pctSin" position="top" fontSize={10} formatter={(v) => v > 0 ? v + '%' : ''} />
+                    </Line>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
+          {/* Gráfico de líneas: Evolución Mensual */}
+          <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>📅 Evolución Mensual</h3>
+              <button 
+                className="icon-btn" 
+                onClick={() => descargarGrafico('grafico-mensual', 'evolucion_mensual')}
+                title="Descargar PNG"
+              >
+                📸
+              </button>
+            </div>
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+              <div 
+                id="grafico-mensual" 
+                style={{ 
+                  minWidth: Math.max(600, stats.porMes.length * 80), 
+                  height: 350 
+                }}
+              >
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={stats.porMes} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={formatearNumero} />
+                    <Tooltip formatter={(value) => formatearNumero(value)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="integracion" stroke={COLORS.lineaIntegracion} name="Integración" strokeWidth={2} dot={{ r: 4 }}>
+                      <LabelList dataKey="integracion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Line>
+                    <Line type="monotone" dataKey="recuperados" stroke={COLORS.lineaRecuperados} name="Recuperados" strokeWidth={2} dot={{ r: 4 }}>
+                      <LabelList dataKey="recuperados" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Line>
+                    <Line type="monotone" dataKey="sinAccion" stroke={COLORS.lineaSinAccion} name="Sin Acción" strokeWidth={2} dot={{ r: 4 }}>
+                      <LabelList dataKey="sinAccion" position="top" fontSize={10} formatter={(v) => v > 0 ? formatearNumero(v) : ''} />
+                    </Line>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button className="primary-btn" onClick={() => setShowStatsModal(false)}>Cerrar</button>
+      </div>
+    </div>
+  </div>
+)}
       {/* Modal de vista previa Excel */}
       {showExcelModal && (
         <div className="modal-overlay">
