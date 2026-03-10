@@ -514,7 +514,10 @@ export default function ResultadosDigitales({ onBack, rol }) {
                         <YAxis tickFormatter={formatearNumero} />
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]} />
+                        <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]}>
+                          {/* Etiquetas de datos sobre las barras */}
+                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -531,7 +534,10 @@ export default function ResultadosDigitales({ onBack, rol }) {
                         <YAxis tickFormatter={formatearNumero} />
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]} />
+                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]}>
+                          {/* Etiquetas de datos sobre las barras */}
+                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
