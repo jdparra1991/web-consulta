@@ -515,8 +515,27 @@ export default function ResultadosDigitales({ onBack, rol }) {
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
                         <Bar dataKey="cantidad" fill="#3b82f6" radius={[4,4,0,0]}>
-                          {/* Etiquetas de datos sobre las barras */}
-                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                          {/* Etiquetas verticales (270°) */}
+                          <LabelList
+                            dataKey="cantidad"
+                            position="top"
+                            content={(props) => {
+                              const { x, y, value } = props;
+                              return (
+                                <text
+                                  x={x}
+                                  y={y - 12} // desplazamiento vertical
+                                  fill="#333"
+                                  fontSize={11}
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  transform={`rotate(270, ${x}, ${y - 12})`}
+                                >
+                                  {formatearNumero(value)}
+                                </text>
+                              );
+                            }}
+                          />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -535,8 +554,27 @@ export default function ResultadosDigitales({ onBack, rol }) {
                         <Tooltip formatter={(value) => formatearNumero(value)} />
                         <Legend />
                         <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]}>
-                          {/* Etiquetas de datos sobre las barras */}
-                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                          {/* Etiquetas verticales (270°) */}
+                          <LabelList
+                            dataKey="cantidad"
+                            position="top"
+                            content={(props) => {
+                              const { x, y, value } = props;
+                              return (
+                                <text
+                                  x={x}
+                                  y={y - 12}
+                                  fill="#333"
+                                  fontSize={11}
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                  transform={`rotate(270, ${x}, ${y - 12})`}
+                                >
+                                  {formatearNumero(value)}
+                                </text>
+                              );
+                            }}
+                          />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
