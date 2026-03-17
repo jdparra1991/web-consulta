@@ -623,6 +623,36 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     }
   }
 
+  // ----- FUNCIONES AUXILIARES PARA PROCESAR EXCEL -----
+  // Convierte número de Excel a HH:MM
+  function excelNumberToTime(valor) {
+    if (valor === undefined || valor === null || valor === '') return '';
+    if (typeof valor === 'string') return valor; // ya viene como texto
+    if (typeof valor === 'number') {
+      const totalMinutos = Math.round(valor * 24 * 60);
+      const horas = Math.floor(totalMinutos / 60);
+      const minutos = totalMinutos % 60;
+      return `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+    }
+    return String(valor);
+  }
+
+  // ----- NUEVA VALIDACIÓN: Normalizar tipo_servicio -----
+  function normalizarTipoServicio(valor) {
+    if (!valor) return ''; // vacío se deja vacío (luego validaremos)
+    const str = String(valor).trim().toLowerCase();
+    // Mapeo de variantes comunes
+    if (str.includes('publico') || str.includes('público') || str === 'servicios_publicos') {
+      return 'servicios_publicos';
+    }
+    if (str.includes('telecom') || str === 'telecomunicaciones') {
+      return 'telecomunicaciones';
+    }
+    // Si no coincide con ninguna, devolvemos el original (para luego mostrar error)
+    return str;
+  }
+  // ----- FIN NUEVA VALIDACIÓN -----
+
   // Cargar desde Excel
   const cargarExcel = (e) => {
     const file = e.target.files[0]
@@ -681,50 +711,57 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         'servidor_destino_no_responde': 41,
       }
 
-      const parsed = dataRows.map(row => ({
-        tipo_servicio: row[colMap['tipo_servicio']] || '',
-        ciclo_id: parseInt(row[colMap['ciclo_id']]) || 0,
-        ciclo_nombre: row[colMap['ciclo_nombre']] || '',
-        mes_trabajo: row[colMap['mes_trabajo']] || obtenerFechaColombia(),
-        fecha_envio: row[colMap['fecha_envio']] || obtenerFechaColombia(),
-        fecha_vencimiento: row[colMap['fecha_vencimiento']] || obtenerFechaColombia(),
-        fecha_aprobacion: row[colMap['fecha_aprobacion']] || obtenerFechaColombia(),
-        fecha_alistamiento: row[colMap['fecha_alistamiento']] || obtenerFechaColombia(),
-        cantidad_facturas: parseInt(row[colMap['cantidad_facturas']]) || 0,
-        cantidad_anexos: parseInt(row[colMap['cantidad_anexos']]) || 0,
-        cantidad_facturas_digitales: parseInt(row[colMap['cantidad_facturas_digitales']]) || 0,
-        cantidad_facturas_pdf: parseInt(row[colMap['cantidad_facturas_pdf']]) || 0,
-        cantidad_sin_ruta: parseInt(row[colMap['cantidad_sin_ruta']]) || 0,
-        cantidad_empresas: parseInt(row[colMap['cantidad_empresas']]) || 0,
-        cantidad_retenidas: parseInt(row[colMap['cantidad_retenidas']]) || 0,
-        cantidad_da: parseInt(row[colMap['cantidad_da']]) || 0,
-        cantidad_paquetes: parseInt(row[colMap['cantidad_paquetes']]) || 0,
-        paquetes: row[colMap['paquetes']] || '[]',
-        aprobado_por: row[colMap['aprobado_por']] || '',
-        alistado_por: row[colMap['alistado_por']] || '',
-        novedades: row[colMap['novedades']] || '',
-        cantidad_cartas_impedimento: parseInt(row[colMap['cantidad_cartas_impedimento']]) || 0,
-        cantidad_facturas_blancas: parseInt(row[colMap['cantidad_facturas_blancas']]) || 0,
-        cantidad_facturas_amarillas: parseInt(row[colMap['cantidad_facturas_amarillas']]) || 0,
-        cantidad_pdf_adicionales: parseInt(row[colMap['cantidad_pdf_adicionales']]) || 0,
-        hora_envio_ciclo: row[colMap['hora_envio_ciclo']] || '',
-        hora_aprobacion: row[colMap['hora_aprobacion']] || '',
-        hora_alistamiento: row[colMap['hora_alistamiento']] || '',
-        cantidad_cartas_desviaciones: parseInt(row[colMap['cantidad_cartas_desviaciones']]) || 0,
-        cantidad_cartera: parseInt(row[colMap['cantidad_cartera']]) || 0,
-        fecha_envio_muestras: row[colMap['fecha_envio_muestras']] || '',
-        hora_envio_muestras: row[colMap['hora_envio_muestras']] || '',
-        buzones_inactivo: parseInt(row[colMap['buzones_inactivo']]) || 0,
-        buzones_lleno: parseInt(row[colMap['buzones_lleno']]) || 0,
-        buzones_no_existe: parseInt(row[colMap['buzones_no_existe']]) || 0,
-        correo_mal_escrito: parseInt(row[colMap['correo_mal_escrito']]) || 0,
-        dominio_no_existe: parseInt(row[colMap['dominio_no_existe']]) || 0,
-        enviados: parseInt(row[colMap['enviados']]) || 0,
-        rechazado_varios_intentos: parseInt(row[colMap['rechazado_varios_intentos']]) || 0,
-        reporta_spam: parseInt(row[colMap['reporta_spam']]) || 0,
-        sin_adjunto: parseInt(row[colMap['sin_adjunto']]) || 0,
-        servidor_destino_no_responde: parseInt(row[colMap['servidor_destino_no_responde']]) || 0,
-      }))
+      // Parsear cada fila aplicando las conversiones necesarias
+      const parsed = dataRows.map(row => {
+        const rawTipo = row[colMap['tipo_servicio']];
+        const tipoNormalizado = normalizarTipoServicio(rawTipo);
+
+        return {
+          tipo_servicio: tipoNormalizado,
+          ciclo_id: parseInt(row[colMap['ciclo_id']]) || 0,
+          ciclo_nombre: row[colMap['ciclo_nombre']] || '',
+          mes_trabajo: row[colMap['mes_trabajo']] || obtenerFechaColombia(),
+          fecha_envio: row[colMap['fecha_envio']] || obtenerFechaColombia(),
+          fecha_vencimiento: row[colMap['fecha_vencimiento']] || obtenerFechaColombia(),
+          fecha_aprobacion: row[colMap['fecha_aprobacion']] || obtenerFechaColombia(),
+          fecha_alistamiento: row[colMap['fecha_alistamiento']] || obtenerFechaColombia(),
+          cantidad_facturas: parseInt(row[colMap['cantidad_facturas']]) || 0,
+          cantidad_anexos: parseInt(row[colMap['cantidad_anexos']]) || 0,
+          cantidad_facturas_digitales: parseInt(row[colMap['cantidad_facturas_digitales']]) || 0,
+          cantidad_facturas_pdf: parseInt(row[colMap['cantidad_facturas_pdf']]) || 0,
+          cantidad_sin_ruta: parseInt(row[colMap['cantidad_sin_ruta']]) || 0,
+          cantidad_empresas: parseInt(row[colMap['cantidad_empresas']]) || 0,
+          cantidad_retenidas: parseInt(row[colMap['cantidad_retenidas']]) || 0,
+          cantidad_da: parseInt(row[colMap['cantidad_da']]) || 0,
+          cantidad_paquetes: parseInt(row[colMap['cantidad_paquetes']]) || 0,
+          paquetes: row[colMap['paquetes']] || '[]',
+          aprobado_por: row[colMap['aprobado_por']] || '',
+          alistado_por: row[colMap['alistado_por']] || '',
+          novedades: row[colMap['novedades']] || '',
+          cantidad_cartas_impedimento: parseInt(row[colMap['cantidad_cartas_impedimento']]) || 0,
+          cantidad_facturas_blancas: parseInt(row[colMap['cantidad_facturas_blancas']]) || 0,
+          cantidad_facturas_amarillas: parseInt(row[colMap['cantidad_facturas_amarillas']]) || 0,
+          cantidad_pdf_adicionales: parseInt(row[colMap['cantidad_pdf_adicionales']]) || 0,
+          // Conversión de horas:
+          hora_envio_ciclo: excelNumberToTime(row[colMap['hora_envio_ciclo']]),
+          hora_aprobacion: excelNumberToTime(row[colMap['hora_aprobacion']]),
+          hora_alistamiento: excelNumberToTime(row[colMap['hora_alistamiento']]),
+          cantidad_cartas_desviaciones: parseInt(row[colMap['cantidad_cartas_desviaciones']]) || 0,
+          cantidad_cartera: parseInt(row[colMap['cantidad_cartera']]) || 0,
+          fecha_envio_muestras: row[colMap['fecha_envio_muestras']] || '',
+          hora_envio_muestras: excelNumberToTime(row[colMap['hora_envio_muestras']]),
+          buzones_inactivo: parseInt(row[colMap['buzones_inactivo']]) || 0,
+          buzones_lleno: parseInt(row[colMap['buzones_lleno']]) || 0,
+          buzones_no_existe: parseInt(row[colMap['buzones_no_existe']]) || 0,
+          correo_mal_escrito: parseInt(row[colMap['correo_mal_escrito']]) || 0,
+          dominio_no_existe: parseInt(row[colMap['dominio_no_existe']]) || 0,
+          enviados: parseInt(row[colMap['enviados']]) || 0,
+          rechazado_varios_intentos: parseInt(row[colMap['rechazado_varios_intentos']]) || 0,
+          reporta_spam: parseInt(row[colMap['reporta_spam']]) || 0,
+          sin_adjunto: parseInt(row[colMap['sin_adjunto']]) || 0,
+          servidor_destino_no_responde: parseInt(row[colMap['servidor_destino_no_responde']]) || 0,
+        }
+      });
 
       setExcelData(parsed)
       setExcelPreview(parsed.slice(0,5))
@@ -736,6 +773,15 @@ export default function AlistamientoFacturas({ onBack, rol }) {
   async function guardarExcel() {
     setLoading(true);
     try {
+      // ----- NUEVA VALIDACIÓN: Verificar que todos los tipos_servicio sean válidos -----
+      const valoresPermitidos = ['servicios_publicos', 'telecomunicaciones'];
+      const invalidos = excelData.filter(r => !valoresPermitidos.includes(r.tipo_servicio));
+      if (invalidos.length > 0) {
+        const ejemplos = invalidos.slice(0, 3).map(r => `'${r.tipo_servicio}'`).join(', ');
+        throw new Error(`Hay ${invalidos.length} registro(s) con tipo de servicio inválido. Valores permitidos: ${valoresPermitidos.join(', ')}. Ejemplos: ${ejemplos}`);
+      }
+      // ----- FIN VALIDACIÓN -----
+
       const user = (await supabase.auth.getUser()).data.user;
       const toInsert = excelData.map(r => ({
         ...r,
@@ -743,6 +789,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         paquetes: JSON.parse(r.paquetes) // si viene como string
       }));
       
+      // Nota: asegúrate de tener la constraint unique (ciclo_id, mes_trabajo) en la tabla
       const { error } = await supabase
         .from('alistamiento_facturas')
         .upsert(toInsert, { 

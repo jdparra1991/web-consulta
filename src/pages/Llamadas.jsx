@@ -10,7 +10,8 @@ import {
   CartesianGrid,
   Legend,
   LineChart,
-  Line
+  Line,
+  LabelList
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
@@ -48,6 +49,9 @@ const SERVICIOS = [
 
 const COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899']
 
+// Función para formatear números
+const formatearNumero = (num) => new Intl.NumberFormat('es-CO').format(num || 0)
+
 export default function Llamadas({ onBack, rol }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
@@ -72,6 +76,7 @@ export default function Llamadas({ onBack, rol }) {
     gestor: '',
     resultado: ''
   })
+  const [selectedMonth, setSelectedMonth] = useState('')
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
@@ -84,7 +89,7 @@ export default function Llamadas({ onBack, rol }) {
     telefono: '',
     fecha_visita_programada: '',
     servicio: '',
-    fecha_gestion: new Date().toISOString().split('T')[0], // principal
+    fecha_gestion: new Date().toISOString().split('T')[0],
     gestor: '',
     nombre_suscriptor: '',
     direccion_predio: '',
@@ -133,20 +138,20 @@ export default function Llamadas({ onBack, rol }) {
 
   async function cargarEstadisticas() {
     try {
-      // Por día (últimos 30) basado en fecha_gestion
-      const fechaLimite = new Date()
-      fechaLimite.setDate(fechaLimite.getDate() - 30)
-      const { data: datosDia } = await supabase
-        .from('llamadas')
-        .select('fecha_gestion')
-        .gte('fecha_gestion', fechaLimite.toISOString().split('T')[0])
-      const porDia = {}
-      datosDia?.forEach(r => { 
-        if (r.fecha_gestion) porDia[r.fecha_gestion] = (porDia[r.fecha_gestion] || 0) + 1 
-      })
+      // Función para construir la consulta base con todos los filtros (sin ejecutar)
+      const buildBaseQuery = () => {
+        let query = supabase.from('llamadas').select('*')
+        if (filters.fecha_desde) query = query.gte('fecha_gestion', filters.fecha_desde)
+        if (filters.fecha_hasta) query = query.lte('fecha_gestion', filters.fecha_hasta)
+        if (filters.ciclo) query = query.ilike('ciclo', `%${filters.ciclo}%`)
+        if (filters.gestor) query = query.ilike('gestor', `%${filters.gestor}%`)
+        if (filters.resultado) query = query.eq('resultado_llamada', filters.resultado)
+        return query
+      }
 
-      // Por mes (últimos 12) basado en fecha_gestion
-      const { data: datosMes } = await supabase.from('llamadas').select('fecha_gestion')
+      // --- GRÁFICO POR MES (filtrado) ---
+      const queryMes = buildBaseQuery().select('fecha_gestion')
+      const { data: datosMes } = await queryMes
       const porMes = {}
       const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
       datosMes?.forEach(r => {
@@ -157,41 +162,54 @@ export default function Llamadas({ onBack, rol }) {
         if (!porMes[key]) porMes[key] = { mes: label, cantidad: 0, key }
         porMes[key].cantidad++
       })
+      const porMesArray = Object.values(porMes)
+        .sort((a,b) => a.key.localeCompare(b.key))
+        .slice(-12) // últimos 12 meses dentro del filtro
 
-      // Por resultado
-      const { data: datosResultado } = await supabase
-        .from('llamadas')
-        .select('resultado_llamada')
-        .not('resultado_llamada', 'is', null)
+      // --- GRÁFICO POR DÍA (todos los días del filtro) ---
+      const queryDia = buildBaseQuery().select('fecha_gestion')
+      const { data: datosDia } = await queryDia
+      const porDia = {}
+      datosDia?.forEach(r => {
+        if (r.fecha_gestion) porDia[r.fecha_gestion] = (porDia[r.fecha_gestion] || 0) + 1
+      })
+      const porDiaArray = Object.entries(porDia)
+        .map(([fecha, cantidad]) => ({ fecha, cantidad }))
+        .sort((a,b) => a.fecha.localeCompare(b.fecha))
+
+      // --- GRÁFICO POR RESULTADO ---
+      const queryResultado = buildBaseQuery().select('resultado_llamada').not('resultado_llamada', 'is', null)
+      const { data: datosResultado } = await queryResultado
       const porResultado = {}
       datosResultado?.forEach(r => {
         porResultado[r.resultado_llamada] = (porResultado[r.resultado_llamada] || 0) + 1
       })
+      const porResultadoArray = Object.entries(porResultado)
+        .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+        .sort((a,b) => b.cantidad - a.cantidad)
 
-      // Por gestor (top 5)
-      const { data: datosGestor } = await supabase
-        .from('llamadas')
-        .select('gestor')
-        .not('gestor', 'is', null)
+      // --- GRÁFICO POR GESTOR (top 5) ---
+      const queryGestor = buildBaseQuery().select('gestor').not('gestor', 'is', null)
+      const { data: datosGestor } = await queryGestor
       const porGestor = {}
       datosGestor?.forEach(r => {
         porGestor[r.gestor] = (porGestor[r.gestor] || 0) + 1
       })
+      const porGestorArray = Object.entries(porGestor)
+        .map(([gestor, cantidad]) => ({ gestor, cantidad }))
+        .sort((a,b) => b.cantidad - a.cantidad)
+        .slice(0, 5)
 
-      // Total
-      const { count } = await supabase
-        .from('llamadas')
-        .select('*', { count: 'exact', head: true })
+      // --- TOTAL DE REGISTROS FILTRADOS ---
+      const queryTotal = buildBaseQuery().select('*', { count: 'exact', head: true })
+      const { count } = await queryTotal
 
       setStats({
         total: count || 0,
-        porDia: Object.entries(porDia).map(([fecha, c]) => ({ fecha, cantidad: c })),
-        porMes: Object.values(porMes).sort((a,b) => a.key.localeCompare(b.key)).slice(-12),
-        porResultado: Object.entries(porResultado).map(([r, c]) => ({ nombre: r, cantidad: c })),
-        porGestor: Object.entries(porGestor)
-          .map(([g, c]) => ({ gestor: g, cantidad: c }))
-          .sort((a,b) => b.cantidad - a.cantidad)
-          .slice(0, 5)
+        porDia: porDiaArray,
+        porMes: porMesArray,
+        porResultado: porResultadoArray,
+        porGestor: porGestorArray
       })
     } catch (error) {
       console.error('Error cargando estadísticas:', error)
@@ -496,6 +514,7 @@ export default function Llamadas({ onBack, rol }) {
 
   const resetFilters = () => {
     setFilters({ fecha_desde: '', fecha_hasta: '', ciclo: '', gestor: '', resultado: '' })
+    setSelectedMonth('')
     setPage(1)
   }
 
@@ -538,24 +557,67 @@ export default function Llamadas({ onBack, rol }) {
         </button>
       </div>
 
+      {/* Filtros: selector de mes automático + fechas manuales */}
+      <div className="search-panel" style={{ flexWrap: 'wrap', gap: '8px' }}>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => {
+            const month = e.target.value;
+            setSelectedMonth(month);
+            if (month) {
+              const [year, monthNum] = month.split('-');
+              const fechaDesde = `${year}-${monthNum}-01`;
+              const ultimoDia = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
+              const fechaHasta = `${year}-${monthNum}-${String(ultimoDia).padStart(2, '0')}`;
+              setFilters(prev => ({ ...prev, fecha_desde: fechaDesde, fecha_hasta: fechaHasta, page: 1 }));
+            } else {
+              // Si se borra el mes, limpiamos las fechas
+              setFilters(prev => ({ ...prev, fecha_desde: '', fecha_hasta: '', page: 1 }));
+            }
+          }}
+          style={{ width: 'auto' }}
+          placeholder="Seleccionar mes"
+        />
+        <input type="date" placeholder="Fecha desde" value={filters.fecha_desde} onChange={e => setFilters({...filters, fecha_desde: e.target.value, page:1})} />
+        <input type="date" placeholder="Fecha hasta" value={filters.fecha_hasta} onChange={e => setFilters({...filters, fecha_hasta: e.target.value, page:1})} />
+        <input type="text" placeholder="Ciclo" value={filters.ciclo} onChange={e => setFilters({...filters, ciclo: e.target.value, page:1})} />
+        <select value={filters.gestor} onChange={e => setFilters({...filters, gestor: e.target.value, page:1})}>
+          <option value="">Todos los gestores</option>
+          {GESTORES.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select value={filters.resultado} onChange={e => setFilters({...filters, resultado: e.target.value, page:1})}>
+          <option value="">Todos los resultados</option>
+          {RESULTADOS_LLAMADA.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <button onClick={resetFilters}>Limpiar</button>
+      </div>
+
       {/* Modal de estadísticas */}
       {showStatsModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 1000, maxHeight: '90vh' }}>
+          <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
             <div className="modal-header">
               <h2>📊 Estadísticas de Llamadas</h2>
               <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
             </div>
-            <div className="modal-body" style={{ overflowY: 'auto' }}>
-              <div className="charts-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div className="modal-body" style={{ overflowY: 'auto', padding: '20px' }}>
+              <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                 {/* Gráfico por día (fecha_gestion) */}
-                <div className="dashboard-card">
-                  <h3>📅 Llamadas por Día (últimos 30)</h3>
-                  <div style={{ height: 250 }}>
+                <div className="dashboard-card" style={{ padding: '16px' }}>
+                  <h3 style={{ marginBottom: '12px' }}>📅 Llamadas por Día</h3>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={stats.porDia}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="fecha" tick={{ fontSize: 10 }} />
+                        <XAxis 
+                          dataKey="fecha" 
+                          tick={{ fontSize: 10 }} 
+                          angle={-45} 
+                          textAnchor="end" 
+                          height={60}
+                          interval={0}
+                        />
                         <YAxis />
                         <Tooltip />
                         <Legend />
@@ -565,52 +627,65 @@ export default function Llamadas({ onBack, rol }) {
                   </div>
                 </div>
 
-                {/* Gráfico por mes (fecha_gestion) */}
-                <div className="dashboard-card">
-                  <h3>📊 Llamadas por Mes</h3>
-                  <div style={{ height: 250 }}>
+                {/* Gráfico por mes (fecha_gestion) - AHORA FILTRADO */}
+                <div className="dashboard-card" style={{ padding: '16px' }}>
+                  <h3 style={{ marginBottom: '12px' }}>📊 Llamadas por Mes</h3>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats.porMes}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
+                        <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]} />
+                        <Bar dataKey="cantidad" fill="#f59e0b" radius={[4,4,0,0]}>
+                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
                 {/* Gráfico de resultados (barras) */}
-                <div className="dashboard-card">
-                  <h3>🎯 Resultados de Llamada</h3>
-                  <div style={{ height: 250 }}>
+                <div className="dashboard-card" style={{ padding: '16px' }}>
+                  <h3 style={{ marginBottom: '12px' }}>🎯 Resultados de Llamada</h3>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porResultado}>
+                      <BarChart data={stats.porResultado} margin={{ top: 20, right: 30, left: 20, bottom: 70 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="nombre" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
+                        <XAxis 
+                          dataKey="nombre" 
+                          tick={{ fontSize: 10 }} 
+                          angle={-45} 
+                          textAnchor="end" 
+                          height={80} 
+                          interval={0}
+                        />
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#10b981" radius={[4,4,0,0]} />
+                        <Bar dataKey="cantidad" fill="#10b981" radius={[4,4,0,0]}>
+                          <LabelList dataKey="cantidad" position="top" formatter={formatearNumero} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
                 {/* Gráfico de gestores (top 5) */}
-                <div className="dashboard-card">
-                  <h3>👥 Top Gestores</h3>
-                  <div style={{ height: 250 }}>
+                <div className="dashboard-card" style={{ padding: '16px' }}>
+                  <h3 style={{ marginBottom: '12px' }}>👥 Top Gestores</h3>
+                  <div style={{ height: 350 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porGestor} layout="vertical">
+                      <BarChart data={stats.porGestor} layout="vertical" margin={{ left: 100, right: 20, top: 20, bottom: 20 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis type="number" />
-                        <YAxis dataKey="gestor" type="category" width={100} tick={{ fontSize: 12 }} />
+                        <YAxis dataKey="gestor" type="category" width={120} tick={{ fontSize: 12 }} />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="cantidad" fill="#8b5cf6" radius={[0,4,4,0]} />
+                        <Bar dataKey="cantidad" fill="#8b5cf6" radius={[0,4,4,0]}>
+                          <LabelList dataKey="cantidad" position="right" formatter={formatearNumero} />
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -761,22 +836,6 @@ export default function Llamadas({ onBack, rol }) {
           </div>
         </div>
       )}
-
-      {/* Filtros */}
-      <div className="search-panel">
-        <input type="date" placeholder="Fecha gestión desde" value={filters.fecha_desde} onChange={e => setFilters({...filters, fecha_desde: e.target.value, page:1})} />
-        <input type="date" placeholder="Fecha gestión hasta" value={filters.fecha_hasta} onChange={e => setFilters({...filters, fecha_hasta: e.target.value, page:1})} />
-        <input type="text" placeholder="Ciclo" value={filters.ciclo} onChange={e => setFilters({...filters, ciclo: e.target.value, page:1})} />
-        <select value={filters.gestor} onChange={e => setFilters({...filters, gestor: e.target.value, page:1})}>
-          <option value="">Todos los gestores</option>
-          {GESTORES.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <select value={filters.resultado} onChange={e => setFilters({...filters, resultado: e.target.value, page:1})}>
-          <option value="">Todos los resultados</option>
-          {RESULTADOS_LLAMADA.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <button onClick={resetFilters}>Limpiar</button>
-      </div>
 
       {/* Tabla de resultados */}
       <div className="table-container">
