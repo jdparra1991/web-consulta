@@ -251,6 +251,9 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     reporta_spam: 0,
     sin_adjunto: 0,
     servidor_destino_no_responde: 0,
+    // Nuevos campos para manejo de paquetes
+    paquete_tipo: 'general',
+    paquetes_cantidades: [] // Array de números, uno por paquete
   })
 
   useEffect(() => {
@@ -450,7 +453,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       ['   • cantidad_retenidas'],
       ['   • cantidad_da'],
       ['   • cantidad_paquetes'],
-      ['   • paquetes (JSON, ej: [{"nombre":"paq1","cantidad":5}])'],
+      ['   • paquetes (JSON, ej: [{"tipo":"normal","cantidad":5}])'],
       ['   • aprobado_por'],
       ['   • alistado_por'],
       ['   • novedades'],
@@ -532,7 +535,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         'Retenidas': r.cantidad_retenidas,
         'DA': r.cantidad_da,
         'Paquetes': r.cantidad_paquetes,
-        'Paquetes (JSON)': r.paquetes,
+        'Paquetes (JSON)': JSON.stringify(r.paquetes),
         'Aprobado por': r.aprobado_por,
         'Alistado por': r.alistado_por,
         'Novedades': r.novedades,
@@ -586,20 +589,22 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     setLoading(true)
     try {
       const user = (await supabase.auth.getUser()).data.user
-      // Validar JSON de paquetes
-      try {
-        JSON.parse(formData.paquetes)
-      } catch (e) {
-        alert('El campo "paquetes" debe ser un JSON válido')
-        setLoading(false)
-        return
-      }
 
+      // Construir el array de paquetes a partir de las cantidades ingresadas
+      const paquetesArray = (formData.paquetes_cantidades || []).map(cant => ({
+        tipo: formData.paquete_tipo?.trim() || 'general',
+        cantidad: cant
+      }))
+
+      // Preparar datos para enviar (excluir campos auxiliares)
       const data = {
         ...formData,
+        paquetes: paquetesArray,
         user_id: user?.id,
-        paquetes: JSON.parse(formData.paquetes)
       }
+      delete data.paquete_tipo
+      delete data.paquetes_cantidades
+
       let error
       if (editingId) {
         ({ error } = await supabase.from('alistamiento_facturas').update(data).eq('id', editingId))
@@ -637,21 +642,18 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     return String(valor);
   }
 
-  // ----- NUEVA VALIDACIÓN: Normalizar tipo_servicio -----
+  // Normalizar tipo_servicio
   function normalizarTipoServicio(valor) {
-    if (!valor) return ''; // vacío se deja vacío (luego validaremos)
+    if (!valor) return '';
     const str = String(valor).trim().toLowerCase();
-    // Mapeo de variantes comunes
     if (str.includes('publico') || str.includes('público') || str === 'servicios_publicos') {
       return 'servicios_publicos';
     }
     if (str.includes('telecom') || str === 'telecomunicaciones') {
       return 'telecomunicaciones';
     }
-    // Si no coincide con ninguna, devolvemos el original (para luego mostrar error)
     return str;
   }
-  // ----- FIN NUEVA VALIDACIÓN -----
 
   // Cargar desde Excel
   const cargarExcel = (e) => {
@@ -711,7 +713,6 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         'servidor_destino_no_responde': 41,
       }
 
-      // Parsear cada fila aplicando las conversiones necesarias
       const parsed = dataRows.map(row => {
         const rawTipo = row[colMap['tipo_servicio']];
         const tipoNormalizado = normalizarTipoServicio(rawTipo);
@@ -742,7 +743,6 @@ export default function AlistamientoFacturas({ onBack, rol }) {
           cantidad_facturas_blancas: parseInt(row[colMap['cantidad_facturas_blancas']]) || 0,
           cantidad_facturas_amarillas: parseInt(row[colMap['cantidad_facturas_amarillas']]) || 0,
           cantidad_pdf_adicionales: parseInt(row[colMap['cantidad_pdf_adicionales']]) || 0,
-          // Conversión de horas:
           hora_envio_ciclo: excelNumberToTime(row[colMap['hora_envio_ciclo']]),
           hora_aprobacion: excelNumberToTime(row[colMap['hora_aprobacion']]),
           hora_alistamiento: excelNumberToTime(row[colMap['hora_alistamiento']]),
@@ -773,28 +773,33 @@ export default function AlistamientoFacturas({ onBack, rol }) {
   async function guardarExcel() {
     setLoading(true);
     try {
-      // ----- NUEVA VALIDACIÓN: Verificar que todos los tipos_servicio sean válidos -----
       const valoresPermitidos = ['servicios_publicos', 'telecomunicaciones'];
       const invalidos = excelData.filter(r => !valoresPermitidos.includes(r.tipo_servicio));
       if (invalidos.length > 0) {
         const ejemplos = invalidos.slice(0, 3).map(r => `'${r.tipo_servicio}'`).join(', ');
         throw new Error(`Hay ${invalidos.length} registro(s) con tipo de servicio inválido. Valores permitidos: ${valoresPermitidos.join(', ')}. Ejemplos: ${ejemplos}`);
       }
-      // ----- FIN VALIDACIÓN -----
 
       const user = (await supabase.auth.getUser()).data.user;
-      const toInsert = excelData.map(r => ({
-        ...r,
-        user_id: user?.id,
-        paquetes: JSON.parse(r.paquetes) // si viene como string
-      }));
+      const toInsert = excelData.map(r => {
+        let paquetesArray;
+        try {
+          paquetesArray = JSON.parse(r.paquetes);
+        } catch {
+          paquetesArray = [];
+        }
+        return {
+          ...r,
+          user_id: user?.id,
+          paquetes: paquetesArray
+        };
+      });
       
-      // Nota: asegúrate de tener la constraint unique (ciclo_id, mes_trabajo) en la tabla
       const { error } = await supabase
         .from('alistamiento_facturas')
         .upsert(toInsert, { 
           onConflict: 'ciclo_id, mes_trabajo',
-          ignoreDuplicates: false // false = actualiza, true = ignora
+          ignoreDuplicates: false
         });
 
       if (error) throw error;
@@ -815,12 +820,20 @@ export default function AlistamientoFacturas({ onBack, rol }) {
   }
 
   function editar(item) {
+    // Extraer las cantidades del JSON de paquetes
+    const paquetesArray = Array.isArray(item.paquetes) ? item.paquetes : [];
+    const cantidades = paquetesArray.map(p => p.cantidad || 0);
+    const tipo = paquetesArray.length > 0 ? (paquetesArray[0].tipo || 'general') : 'general';
+    
     setFormData({
       ...item,
-      paquetes: JSON.stringify(item.paquetes, null, 2)
-    })
-    setEditingId(item.id)
-    setShowForm(true)
+      paquete_tipo: tipo,
+      cantidad_paquetes: paquetesArray.length,
+      paquetes_cantidades: cantidades,
+      paquetes: JSON.stringify(item.paquetes, null, 2) // opcional, para referencia
+    });
+    setEditingId(item.id);
+    setShowForm(true);
   }
 
   async function eliminar(id) {
@@ -885,6 +898,8 @@ export default function AlistamientoFacturas({ onBack, rol }) {
       reporta_spam: 0,
       sin_adjunto: 0,
       servidor_destino_no_responde: 0,
+      paquete_tipo: 'general',
+      paquetes_cantidades: [],
     })
   }
 
@@ -906,6 +921,23 @@ export default function AlistamientoFacturas({ onBack, rol }) {
     return `${dia}/${mes}`;
   }
 
+  // Manejador para cambio en cantidad_paquetes (desde la pestaña Cantidades)
+  const handleCantidadPaquetesChange = (e) => {
+    const newVal = parseInt(e.target.value) || 0;
+    setFormData(prev => {
+      const currentArray = prev.paquetes_cantidades || [];
+      let newArray;
+      if (newVal > currentArray.length) {
+        newArray = [...currentArray, ...Array(newVal - currentArray.length).fill(0)];
+      } else if (newVal < currentArray.length) {
+        newArray = currentArray.slice(0, newVal);
+      } else {
+        newArray = currentArray;
+      }
+      return { ...prev, cantidad_paquetes: newVal, paquetes_cantidades: newArray };
+    });
+  };
+
   return (
     <div className="page">
       <header className="topbar">
@@ -914,7 +946,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         {rol === 'admin' && <span className="user-role">Admin</span>}
       </header>
 
-      {/* Tarjetas de resumen */}
+      {/* Tarjetas de resumen (sin cambios) */}
       <div style={{ display: 'flex', gap: 20, marginBottom: 20, flexWrap: 'wrap' }}>
         <div className="stat-card" style={{ flex: 1, minWidth: 200 }}>
           <div className="stat-icon" style={{ background: '#dbeafe' }}>📋</div>
@@ -949,7 +981,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </button>
       </div>
 
-      {/* Sección de Control de Ciclos */}
+      {/* Sección de Control de Ciclos (sin cambios) */}
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>📋 Control de Ciclos del Mes</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -1027,7 +1059,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </div>
       </div>
 
-      {/* Botones de acción */}
+      {/* Botones de acción (sin cambios) */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <button className="action-btn secondary" onClick={descargarPlantilla}>
           📥 Descargar Plantilla
@@ -1044,7 +1076,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </button>
       </div>
 
-      {/* Modal de estadísticas */}
+      {/* Modal de estadísticas (sin cambios) */}
       {showStatsModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
@@ -1072,7 +1104,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                   </div>
                 </div>
 
-                {/* Gráfico 2: Registros por Día - con escala de tiempo para orden correcto */}
+                {/* Gráfico 2: Registros por Día */}
                 <div className="dashboard-card">
                   <h3>📅 Registros por Día (período) - por fecha de creación</h3>
                   <div style={{ height: 400 }}>
@@ -1109,7 +1141,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                   </div>
                 </div>
 
-                {/* Gráfico 3: Facturas por Mes (últimos 12 meses) */}
+                {/* Gráfico 3: Facturas por Mes */}
                 <div className="dashboard-card">
                   <h3>📊 Facturas por Mes (últimos 12 meses)</h3>
                   <div style={{ height: 400 }}>
@@ -1150,7 +1182,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </div>
       )}
 
-      {/* Modal de vista previa Excel */}
+      {/* Modal de vista previa Excel (sin cambios) */}
       {showExcelModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 800 }}>
@@ -1205,7 +1237,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                 <div className="tab">Horarios</div>
               </div>
 
-              {/* Pestaña 1: Información General */}
+              {/* Pestaña 1: Información General (sin cambios) */}
               <div className="form-section">
                 <h3>📋 Datos básicos</h3>
                 <div className="form-grid">
@@ -1248,7 +1280,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                 </div>
               </div>
 
-              {/* Pestaña 2: Cantidades */}
+              {/* Pestaña 2: Cantidades (modificada: usar handleCantidadPaquetesChange) */}
               <div className="form-section">
                 <h3>🔢 Cantidades</h3>
                 <div className="form-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
@@ -1260,7 +1292,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                   <div className="form-group"><label>Empresas</label><input type="number" value={formData.cantidad_empresas} onChange={e => setFormData({...formData, cantidad_empresas: parseInt(e.target.value) || 0})} /></div>
                   <div className="form-group"><label>Retenidas</label><input type="number" value={formData.cantidad_retenidas} onChange={e => setFormData({...formData, cantidad_retenidas: parseInt(e.target.value) || 0})} /></div>
                   <div className="form-group"><label>DA</label><input type="number" value={formData.cantidad_da} onChange={e => setFormData({...formData, cantidad_da: parseInt(e.target.value) || 0})} /></div>
-                  <div className="form-group"><label>Paquetes (cant.)</label><input type="number" value={formData.cantidad_paquetes} onChange={e => setFormData({...formData, cantidad_paquetes: parseInt(e.target.value) || 0})} /></div>
+                  <div className="form-group"><label>Paquetes (cant.)</label><input type="number" value={formData.cantidad_paquetes} onChange={handleCantidadPaquetesChange} /></div>
                   <div className="form-group"><label>Cartas Impedimento</label><input type="number" value={formData.cantidad_cartas_impedimento} onChange={e => setFormData({...formData, cantidad_cartas_impedimento: parseInt(e.target.value) || 0})} /></div>
                   <div className="form-group"><label>Facturas Blancas</label><input type="number" value={formData.cantidad_facturas_blancas} onChange={e => setFormData({...formData, cantidad_facturas_blancas: parseInt(e.target.value) || 0})} /></div>
                   <div className="form-group"><label>Facturas Amarillas</label><input type="number" value={formData.cantidad_facturas_amarillas} onChange={e => setFormData({...formData, cantidad_facturas_amarillas: parseInt(e.target.value) || 0})} /></div>
@@ -1270,7 +1302,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                 </div>
               </div>
 
-              {/* Pestaña 3: Resultados Digitales */}
+              {/* Pestaña 3: Resultados Digitales (sin cambios) */}
               <div className="form-section">
                 <h3>📧 Resultados de Facturas Digitales</h3>
                 <div className="form-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -1288,14 +1320,57 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                 </div>
               </div>
 
-              {/* Pestaña 4: Paquetes y Novedades */}
+              {/* Pestaña 4: Paquetes y Novedades (totalmente renovada) */}
               <div className="form-section">
                 <h3>📦 Paquetes y Novedades</h3>
                 <div className="form-grid">
+                  {/* Campo para tipo de paquete (opcional) */}
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    <label>Paquetes (JSON)</label>
-                    <textarea rows="5" value={formData.paquetes} onChange={e => setFormData({...formData, paquetes: e.target.value})} />
+                    <label>Tipo de paquete (se aplica a todos)</label>
+                    <input
+                      type="text"
+                      value={formData.paquete_tipo || ''}
+                      onChange={e => setFormData({ ...formData, paquete_tipo: e.target.value })}
+                      placeholder="ej. normal, express, etc. (por defecto 'general')"
+                    />
                   </div>
+
+                  {/* Lista dinámica de inputs para cada paquete */}
+                  {formData.paquetes_cantidades.map((cant, index) => (
+                    <div key={index} className="form-group" style={{ gridColumn: 'span 1' }}>
+                      <label>Paquete {index + 1}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={cant}
+                        onChange={e => {
+                          const newVal = parseInt(e.target.value) || 0;
+                          setFormData(prev => {
+                            const newArray = [...prev.paquetes_cantidades];
+                            newArray[index] = newVal;
+                            return { ...prev, paquetes_cantidades: newArray };
+                          });
+                        }}
+                      />
+                    </div>
+                  ))}
+
+                  {/* Área de solo lectura que muestra el JSON generado (opcional) */}
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Vista previa del JSON (solo lectura)</label>
+                    <textarea
+                      rows="3"
+                      readOnly
+                      value={JSON.stringify(
+                        (formData.paquetes_cantidades || []).map(c => ({
+                          tipo: formData.paquete_tipo?.trim() || 'general',
+                          cantidad: c
+                        })),
+                        null, 2
+                      )}
+                    />
+                  </div>
+
                   <div className="form-group">
                     <label>Aprobado por</label>
                     <input type="text" value={formData.aprobado_por} onChange={e => setFormData({...formData, aprobado_por: e.target.value})} />
@@ -1311,7 +1386,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
                 </div>
               </div>
 
-              {/* Pestaña 5: Horarios */}
+              {/* Pestaña 5: Horarios (sin cambios) */}
               <div className="form-section">
                 <h3>⏰ Horarios</h3>
                 <div className="form-grid">
@@ -1333,7 +1408,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </div>
       )}
 
-      {/* Filtros */}
+      {/* Filtros (sin cambios) */}
       <div className="search-panel">
         <input type="date" placeholder="Mes desde" value={filters.fecha_desde} onChange={e => setFilters({...filters, fecha_desde: e.target.value, page:1})} />
         <input type="date" placeholder="Mes hasta" value={filters.fecha_hasta} onChange={e => setFilters({...filters, fecha_hasta: e.target.value, page:1})} />
@@ -1347,7 +1422,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         <button onClick={resetFilters}>Limpiar</button>
       </div>
 
-      {/* Tabla de resultados */}
+      {/* Tabla de resultados (sin cambios) */}
       <div className="table-container">
         <table>
           <thead>
@@ -1390,7 +1465,7 @@ export default function AlistamientoFacturas({ onBack, rol }) {
         </table>
       </div>
 
-      {/* Paginación */}
+      {/* Paginación (sin cambios) */}
       {totalCount > PAGE_SIZE && (
         <div className="pagination">
           <button disabled={page===1} onClick={() => setPage(p=>p-1)}>← Anterior</button>
