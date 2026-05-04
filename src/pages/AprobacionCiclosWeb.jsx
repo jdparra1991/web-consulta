@@ -88,24 +88,11 @@ const INCONSISTENCIAS = [
   'Otro'
 ]
 
-// Colores para gráficos
 const COLORS = ['#10B981', '#EF4444', '#F59E0B']
 
-// Función para formatear números
 const formatearNumero = (num) => new Intl.NumberFormat('es-CO').format(num || 0)
 
-// Función para obtener fecha actual Colombia
-const obtenerFechaColombia = () => {
-  const ahora = new Date()
-  const colombia = new Date(ahora.getTime() - (5 * 60 * 60 * 1000))
-  const año = colombia.getFullYear()
-  const mes = String(colombia.getMonth() + 1).padStart(2, '0')
-  const dia = String(colombia.getDate()).padStart(2, '0')
-  return `${año}-${mes}-${dia}`
-}
-
 export default function AprobacionCiclosWeb({ onBack, rol }) {
-  // ==================== ESTADOS ====================
   const [evaluaciones, setEvaluaciones] = useState([])
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -132,116 +119,73 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
-  // Formulario de evaluación/cabecera
   const [formData, setFormData] = useState({
     vigencia: '',
     ciclo: '',
-    tipo: 'fisico' // 'fisico' o 'digital'
+    tipo: 'fisico'
   })
-
-  // Estado de los ítems de la evaluación actual (se inicializa cuando cambia tipo)
   const [itemsEstado, setItemsEstado] = useState({})
 
-  // ==================== CARGAR LISTADO DE EVALUACIONES ====================
   const cargarEvaluaciones = async () => {
     setLoading(true)
     try {
       const from = (page - 1) * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
-
       let query = supabase
         .from('aprobaciones_ciclos')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(from, to)
-
       if (filters.fecha_desde) query = query.gte('created_at', filters.fecha_desde)
       if (filters.fecha_hasta) query = query.lte('created_at', filters.fecha_hasta)
       if (filters.ciclo) query = query.ilike('ciclo', `%${filters.ciclo}%`)
       if (filters.resultado) query = query.eq('resultado', filters.resultado)
-
       const { data, count, error } = await query
       if (error) throw error
-
       setEvaluaciones(data || [])
       setTotalCount(count || 0)
     } catch (error) {
-      console.error('Error cargando evaluaciones:', error)
+      console.error(error)
     } finally {
       setLoading(false)
     }
   }
 
-  // ==================== CARGAR ESTADÍSTICAS ====================
   const cargarEstadisticas = async () => {
     try {
-      // Totales por resultado
-      const { data: resultados } = await supabase
-        .from('aprobaciones_ciclos')
-        .select('resultado')
-      
+      const { data: resultados } = await supabase.from('aprobaciones_ciclos').select('resultado')
       const total = resultados?.length || 0
       const aprobadas = resultados?.filter(r => r.resultado === 'APROBADO').length || 0
       const rechazadas = resultados?.filter(r => r.resultado === 'RECHAZADO').length || 0
       const pendientes = resultados?.filter(r => r.resultado === 'PENDIENTE').length || 0
-
-      // Por mes (últimos 12 meses)
-      const { data: porMes } = await supabase
-        .from('aprobaciones_ciclos')
-        .select('created_at, resultado')
-      
+      const { data: porMes } = await supabase.from('aprobaciones_ciclos').select('created_at, resultado')
       const mesesMap = {}
       const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
       porMes?.forEach(r => {
         const fecha = new Date(r.created_at)
         const key = `${fecha.getFullYear()}-${fecha.getMonth()+1}`
         const label = `${mesesNombres[fecha.getMonth()]} ${fecha.getFullYear()}`
-        if (!mesesMap[key]) {
-          mesesMap[key] = { mes: label, aprobadas: 0, rechazadas: 0, pendientes: 0, total: 0 }
-        }
+        if (!mesesMap[key]) mesesMap[key] = { mes: label, aprobadas: 0, rechazadas: 0, pendientes: 0, total: 0 }
         mesesMap[key][r.resultado === 'APROBADO' ? 'aprobadas' : r.resultado === 'RECHAZADO' ? 'rechazadas' : 'pendientes']++
         mesesMap[key].total++
       })
       const porMesArray = Object.values(mesesMap).sort((a,b) => a.mes.localeCompare(b.mes)).slice(-12)
-
-      // Por tipo (físico/digital)
-      const { data: porTipo } = await supabase
-        .from('aprobaciones_ciclos')
-        .select('tipo, resultado')
-      
+      const { data: porTipo } = await supabase.from('aprobaciones_ciclos').select('tipo, resultado')
       const tipoMap = {}
       porTipo?.forEach(r => {
         if (!tipoMap[r.tipo]) tipoMap[r.tipo] = { tipo: r.tipo === 'fisico' ? 'Físico' : 'Digital', aprobadas: 0, rechazadas: 0, total: 0 }
         tipoMap[r.tipo][r.resultado === 'APROBADO' ? 'aprobadas' : 'rechazadas']++
         tipoMap[r.tipo].total++
       })
-      const porTipoArray = Object.values(tipoMap)
-
-      setStats({
-        totalEvaluaciones: total,
-        aprobadas,
-        rechazadas,
-        pendientes,
-        porMes: porMesArray,
-        porTipo: porTipoArray
-      })
-    } catch (error) {
-      console.error('Error cargando estadísticas:', error)
-    }
+      setStats({ totalEvaluaciones: total, aprobadas, rechazadas, pendientes, porMes: porMesArray, porTipo: Object.values(tipoMap) })
+    } catch (error) { console.error(error) }
   }
 
-  // ==================== INICIALIZAR ITEMS SEGÚN TIPO ====================
   useEffect(() => {
     const itemsActuales = formData.tipo === 'fisico' ? ITEMS_FISICO : ITEMS_DIGITAL
     const inicial = {}
     itemsActuales.forEach((texto, idx) => {
-      inicial[idx] = {
-        texto,
-        estado: 'pendiente', // 'pendiente', 'aprobado', 'rechazado'
-        inconsistencias: [],
-        observacion: '',
-        expandido: false
-      }
+      inicial[idx] = { texto, estado: 'pendiente', inconsistencias: [], observacion: '', expandido: false }
     })
     setItemsEstado(inicial)
   }, [formData.tipo])
@@ -251,24 +195,13 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
     cargarEstadisticas()
   }, [filters, page])
 
-  // ==================== MANEJADORES DE ITEMS ====================
   const setEstadoItem = (index, nuevoEstado) => {
     setItemsEstado(prev => {
       const updated = { ...prev }
       if (nuevoEstado === 'rechazado') {
-        updated[index] = {
-          ...updated[index],
-          estado: nuevoEstado,
-          expandido: true
-        }
+        updated[index] = { ...updated[index], estado: nuevoEstado, expandido: true }
       } else if (nuevoEstado === 'aprobado') {
-        updated[index] = {
-          ...updated[index],
-          estado: nuevoEstado,
-          expandido: false,
-          inconsistencias: [],
-          observacion: ''
-        }
+        updated[index] = { ...updated[index], estado: nuevoEstado, expandido: false, inconsistencias: [], observacion: '' }
       } else {
         updated[index] = { ...updated[index], estado: nuevoEstado }
       }
@@ -277,51 +210,30 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
   }
 
   const toggleExpandido = (index) => {
-    setItemsEstado(prev => ({
-      ...prev,
-      [index]: { ...prev[index], expandido: !prev[index].expandido }
-    }))
+    setItemsEstado(prev => ({ ...prev, [index]: { ...prev[index], expandido: !prev[index].expandido } }))
   }
 
   const toggleInconsistencia = (index, inc) => {
     setItemsEstado(prev => {
       const actual = prev[index].inconsistencias
-      const nuevas = actual.includes(inc)
-        ? actual.filter(i => i !== inc)
-        : [...actual, inc]
-      return {
-        ...prev,
-        [index]: { ...prev[index], inconsistencias: nuevas }
-      }
+      const nuevas = actual.includes(inc) ? actual.filter(i => i !== inc) : [...actual, inc]
+      return { ...prev, [index]: { ...prev[index], inconsistencias: nuevas } }
     })
   }
 
   const cambiarObservacion = (index, texto) => {
-    setItemsEstado(prev => ({
-      ...prev,
-      [index]: { ...prev[index], observacion: texto }
-    }))
+    setItemsEstado(prev => ({ ...prev, [index]: { ...prev[index], observacion: texto } }))
   }
 
-  // ==================== VALIDACIÓN Y GUARDADO ====================
   const validarFormulario = () => {
-    if (!formData.vigencia) {
-      alert('Selecciona una vigencia (mes)')
-      return false
-    }
-    if (!formData.ciclo.trim()) {
-      alert('Ingresa el ciclo')
-      return false
-    }
+    if (!formData.vigencia) { alert('Selecciona una vigencia'); return false }
+    if (!formData.ciclo.trim()) { alert('Ingresa el ciclo'); return false }
     const hayPendiente = Object.values(itemsEstado).some(item => item.estado === 'pendiente')
-    if (hayPendiente) {
-      alert('Aún hay ítems pendientes de evaluar. Debes marcar cada ítem como Aprobado o Rechazado.')
-      return false
-    }
+    if (hayPendiente) { alert('Aún hay ítems pendientes'); return false }
     let error = false
     Object.entries(itemsEstado).forEach(([idx, item]) => {
       if (item.estado === 'rechazado' && !item.observacion.trim()) {
-        alert(`El ítem ${parseInt(idx)+1} fue rechazado y debe tener una observación.`)
+        alert(`Ítem ${parseInt(idx)+1} rechazado sin observación`);
         error = true
       }
     })
@@ -335,8 +247,6 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
       const user = (await supabase.auth.getUser()).data.user
       const hayRechazado = Object.values(itemsEstado).some(i => i.estado === 'rechazado')
       const resultadoGlobal = hayRechazado ? 'RECHAZADO' : 'APROBADO'
-
-      // Insertar cabecera
       const { data: cabecera, error: errorCabecera } = await supabase
         .from('aprobaciones_ciclos')
         .insert({
@@ -350,10 +260,7 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
         .select('id')
         .single()
       if (errorCabecera) throw errorCabecera
-
       const aprobacionId = cabecera.id
-
-      // Insertar detalles
       const detalles = Object.entries(itemsEstado).map(([idx, item]) => ({
         aprobacion_id: aprobacionId,
         orden: parseInt(idx) + 1,
@@ -362,23 +269,14 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
         inconsistencias: item.inconsistencias,
         observacion: item.observacion?.trim() || null
       }))
-
-      const { error: errorDetalle } = await supabase
-        .from('aprobaciones_ciclos_detalle')
-        .insert(detalles)
+      const { error: errorDetalle } = await supabase.from('aprobaciones_ciclos_detalle').insert(detalles)
       if (errorDetalle) throw errorDetalle
-
-      // Resetear formulario y recargar
-      setFormData({
-        vigencia: '',
-        ciclo: '',
-        tipo: 'fisico'
-      })
+      setFormData({ vigencia: '', ciclo: '', tipo: 'fisico' })
       setEditingId(null)
       setShowForm(false)
       await cargarEvaluaciones()
       await cargarEstadisticas()
-      alert(`✅ Evaluación ${resultadoGlobal}\nSe guardaron ${detalles.filter(d => d.aprobado).length} ítems aprobados.`)
+      alert(`✅ Evaluación ${resultadoGlobal}\n${detalles.filter(d => d.aprobado).length} ítems aprobados.`)
     } catch (error) {
       console.error(error)
       alert('Error al guardar: ' + error.message)
@@ -387,214 +285,140 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
     }
   }
 
-  // ==================== EXPORTAR / PLANTILLA / EXCEL ====================
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new()
     const instructivo = [
       ['INSTRUCTIVO PARA CARGA MASIVA DE APROBACIÓN DE CICLOS'],
       [''],
-      ['1. FORMATO DE FECHAS:'],
-      ['   • vigencia debe estar en formato "Mes AAAA" (ej: "Enero 2026").'],
-      ['   • No se requiere día.'],
-      [''],
-      ['2. CAMPOS OBLIGATORIOS:'],
-      ['   • ciclo (texto)'],
-      ['   • tipo (fisico o digital)'],
-      ['   • vigencia (texto)'],
-      [''],
-      ['3. COLUMNAS (respetar este orden):'],
-      ['   • Columna A: VIGENCIA (texto)'],
-      ['   • Columna B: CICLO (texto)'],
-      ['   • Columna C: TIPO (fisico/digital)'],
-      [''],
-      ['4. IMPORTANTE:'],
-      ['   • Esta plantilla es solo para cargar cabeceras; los ítems se generan automáticamente según el tipo.'],
-      ['   • Si la evaluación ya existe, se actualizará (usando combinación vigencia+ciclo).'],
+      ['1. FORMATO: vigencia (mes año), ciclo, tipo (fisico/digital)'],
+      ['2. COLUMNAS: VIGENCIA, CICLO, TIPO']
     ]
     const wsInstructivo = XLSX.utils.aoa_to_sheet(instructivo)
     wsInstructivo['!cols'] = [{ wch: 80 }]
     XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo')
-
     const header = ['VIGENCIA', 'CICLO', 'TIPO']
-    const ejemplo = [
-      ['Enero 2026', 'CICLO_001', 'fisico'],
-      ['Febrero 2026', 'CICLO_002', 'digital'],
-    ]
+    const ejemplo = [['Enero 2026', 'CICLO_001', 'fisico']]
     const wsEjemplo = XLSX.utils.aoa_to_sheet([header, ...ejemplo])
     wsEjemplo['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 15 }]
     XLSX.utils.book_append_sheet(wb, wsEjemplo, 'Ejemplo')
-
     XLSX.writeFile(wb, 'plantilla_aprobacion_ciclos.xlsx')
   }
 
+  // ✅ FUNCIÓN EXPORTAR EXCEL MEJORADA (agrupa por evaluación)
   const exportarExcel = async () => {
-  try {
-    setExporting(true)
+    try {
+      setExporting(true)
+      let query = supabase
+        .from('aprobaciones_ciclos')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (filters.fecha_desde) query = query.gte('created_at', filters.fecha_desde)
+      if (filters.fecha_hasta) query = query.lte('created_at', filters.fecha_hasta)
+      if (filters.ciclo) query = query.ilike('ciclo', `%${filters.ciclo}%`)
+      if (filters.resultado) query = query.eq('resultado', filters.resultado)
+      const { data: evaluacionesList, error: errorEval } = await query
+      if (errorEval) throw errorEval
+      if (!evaluacionesList || evaluacionesList.length === 0) {
+        alert('No hay datos para exportar')
+        return
+      }
+      const ids = evaluacionesList.map(e => e.id)
+      const { data: detallesList, error: errorDet } = await supabase
+        .from('aprobaciones_ciclos_detalle')
+        .select('*')
+        .in('aprobacion_id', ids)
+        .order('aprobacion_id', { ascending: true })
+        .order('orden', { ascending: true })
+      if (errorDet) throw errorDet
+      const detallesPorEval = {}
+      detallesList?.forEach(d => {
+        if (!detallesPorEval[d.aprobacion_id]) detallesPorEval[d.aprobacion_id] = []
+        detallesPorEval[d.aprobacion_id].push(d)
+      })
 
-    // 1. Obtener evaluaciones con filtros
-    let query = supabase
-      .from('aprobaciones_ciclos')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (filters.fecha_desde) query = query.gte('created_at', filters.fecha_desde)
-    if (filters.fecha_hasta) query = query.lte('created_at', filters.fecha_hasta)
-    if (filters.ciclo) query = query.ilike('ciclo', `%${filters.ciclo}%`)
-    if (filters.resultado) query = query.eq('resultado', filters.resultado)
-
-    const { data: evaluaciones, error } = await query
-    if (error) throw error
-
-    if (!evaluaciones || evaluaciones.length === 0) {
-      alert('No hay datos para exportar con esos filtros.')
-      return
-    }
-
-    // 2. Obtener IDs y sus detalles
-    const ids = evaluaciones.map(e => e.id)
-    const { data: detalles, error: detError } = await supabase
-      .from('aprobaciones_ciclos_detalle')
-      .select('*')
-      .in('aprobacion_id', ids)
-      .order('aprobacion_id', { ascending: true })
-      .order('orden', { ascending: true })
-
-    if (detError) throw detError
-
-    // Mapa de detalles por evaluación
-    const detallesPorEval = {}
-    detalles?.forEach(d => {
-      if (!detallesPorEval[d.aprobacion_id]) detallesPorEval[d.aprobacion_id] = []
-      detallesPorEval[d.aprobacion_id].push(d)
-    })
-
-    // 3. Construir las filas del Excel (ESTRUCTURA AGRUPADA POR EVALUACIÓN)
-    const filasHoja = []
-
-    // Agregar encabezado corporativo
-    filasHoja.push(['VERIFICACIÓN DE LAS FACTURAS ANTES DE IMPRIMIR'])
-    filasHoja.push([`CÓDIGO: 169P01F004    VERSIÓN: 5`])
-    filasHoja.push([])
-    filasHoja.push([`Reporte generado: ${new Date().toLocaleString('es-CO')}`])
-    let filtrosTexto = ''
-    if (filters.fecha_desde) filtrosTexto += `Desde ${filters.fecha_desde} `
-    if (filters.fecha_hasta) filtrosTexto += `Hasta ${filters.fecha_hasta} `
-    if (filters.ciclo) filtrosTexto += `Ciclo: ${filters.ciclo} `
-    if (filters.resultado) filtrosTexto += `Resultado: ${filters.resultado}`
-    filasHoja.push([`Filtros aplicados: ${filtrosTexto || 'Ninguno'}`])
-    filasHoja.push([])
-    filasHoja.push([]) // separador
-
-    // Ahora, para cada evaluación, agregamos sus datos
-    for (const evalucion of evaluaciones) {
-      // Fila de cabecera de la evaluación (datos comunes)
-      filasHoja.push([
-        `EVALUACIÓN - ${evalucion.ciclo} (${evalucion.vigencia})`,
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        ''
-      ])
-      filasHoja.push([
-        'Vigencia',
-        'Ciclo',
-        'Tipo',
-        'Resultado',
-        'Fecha Evaluación',
-        'Evaluado Por',
-        '',
-        '',
-        '',
-        '',
-        ''
-      ])
-      filasHoja.push([
-        evalucion.vigencia,
-        evalucion.ciclo,
-        evalucion.tipo === 'fisico' ? 'Físico' : 'Digital',
-        evalucion.resultado,
-        new Date(evalucion.created_at).toLocaleString('es-CO'),
-        evalucion.creado_por_nombre || '',
-        '',
-        '',
-        '',
-        '',
-        ''
-      ])
-      filasHoja.push([]) // línea de separación
-
-      // Encabezados de la tabla de ítems
-      filasHoja.push([
-        'Ítem #',
-        'Descripción del Ítem',
-        'Evaluación Ítem',
-        'Inconsistencias',
-        'Observación',
-        '',
-        '',
-        '',
-        '',
-        '',
-        ''
-      ])
-
-      // Ítems de esta evaluación
-      const items = detallesPorEval[evalucion.id] || []
-      for (const item of items) {
-        filasHoja.push([
-          item.orden,
-          item.texto,
-          item.aprobado ? 'APROBADO' : 'RECHAZADO',
-          item.inconsistencias?.join(', ') || '',
-          item.observacion || '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          ''
-        ])
+      // Verificar si todas las evaluaciones tienen los mismos datos de cabecera
+      const mismaCabecera = (arr) => {
+        if (arr.length <= 1) return true
+        const first = arr[0]
+        return arr.every(e => e.vigencia === first.vigencia && e.ciclo === first.ciclo && e.tipo === first.tipo && e.resultado === first.resultado)
       }
 
-      // Línea en blanco entre evaluaciones
-      filasHoja.push([])
-      filasHoja.push([])
+      const wb = XLSX.utils.book_new()
+      const hojaData = []
+
+      // Encabezado fijo solicitado
+      hojaData.push(['VERIFICACIÓN DE LAS FACTURAS ANTES DE IMPRIMIR'])
+      hojaData.push([`CÓDIGO: 169P01F004    VERSIÓN: 5`])
+      hojaData.push([])
+      hojaData.push([`Reporte generado: ${new Date().toLocaleString('es-CO')}`])
+      let filtroTexto = ''
+      if (filters.fecha_desde) filtroTexto += `Desde ${filters.fecha_desde} `
+      if (filters.fecha_hasta) filtroTexto += `Hasta ${filters.fecha_hasta} `
+      if (filters.ciclo) filtroTexto += `Ciclo: ${filters.ciclo} `
+      if (filters.resultado) filtroTexto += `Resultado: ${filters.resultado}`
+      if (filtroTexto) hojaData.push([`Filtros aplicados: ${filtroTexto}`])
+      hojaData.push([])
+
+      if (mismaCabecera(evaluacionesList)) {
+        // Formato compacto: una sola cabecera y luego todos los ítems
+        const first = evaluacionesList[0]
+        hojaData.push([`Vigencia: ${first.vigencia}`, `Ciclo: ${first.ciclo}`, `Tipo: ${first.tipo === 'fisico' ? 'Físico' : 'Digital'}`, `Resultado: ${first.resultado}`])
+        hojaData.push([])
+        hojaData.push(['#', 'Descripción del Ítem', 'Evaluación Ítem', 'Inconsistencias', 'Observación'])
+        for (const evalucion of evaluacionesList) {
+          const items = detallesPorEval[evalucion.id] || []
+          for (const it of items) {
+            hojaData.push([
+              it.orden,
+              it.texto,
+              it.aprobado ? 'APROBADO' : 'RECHAZADO',
+              it.inconsistencias?.join(', ') || '',
+              it.observacion || ''
+            ])
+          }
+        }
+      } else {
+        // Formato detallado (múltiples evaluaciones diferentes)
+        hojaData.push(['Vigencia', 'Ciclo', 'Tipo', 'Resultado Global', 'Ítem #', 'Descripción del Ítem', 'Evaluación Ítem', 'Inconsistencias', 'Observación', 'Fecha Evaluación', 'Evaluado Por'])
+        for (const evalucion of evaluacionesList) {
+          const items = detallesPorEval[evalucion.id] || []
+          for (const it of items) {
+            hojaData.push([
+              evalucion.vigencia,
+              evalucion.ciclo,
+              evalucion.tipo === 'fisico' ? 'Físico' : 'Digital',
+              evalucion.resultado,
+              it.orden,
+              it.texto,
+              it.aprobado ? 'APROBADO' : 'RECHAZADO',
+              it.inconsistencias?.join(', ') || '',
+              it.observacion || '',
+              new Date(evalucion.created_at).toLocaleString('es-CO'),
+              evalucion.creado_por_nombre || ''
+            ])
+          }
+        }
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(hojaData)
+      if (mismaCabecera(evaluacionesList)) {
+        ws['!cols'] = [{ wch: 5 }, { wch: 70 }, { wch: 14 }, { wch: 40 }, { wch: 50 }]
+      } else {
+        ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 60 }, { wch: 14 }, { wch: 40 }, { wch: 50 }, { wch: 20 }, { wch: 25 }]
+      }
+      XLSX.utils.book_append_sheet(wb, ws, 'Validaciones')
+      const nombreArchivo = `aprobacion_ciclos_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([excelBuffer], { type: 'application/octet-stream' })
+      saveAs(blob, nombreArchivo)
+      alert(`✅ Exportado exitosamente.`)
+    } catch (error) {
+      console.error(error)
+      alert('Error al exportar')
+    } finally {
+      setExporting(false)
     }
-
-    // Crear hoja y libro
-    const ws = XLSX.utils.aoa_to_sheet(filasHoja)
-
-    // Ajustar anchos de columnas (las que usamos)
-    ws['!cols'] = [
-      { wch: 10 }, // Ítem #
-      { wch: 60 }, // Descripción
-      { wch: 14 }, // Evaluación
-      { wch: 30 }, // Inconsistencias
-      { wch: 40 }  // Observación
-    ]
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Validaciones por Ciclo')
-
-    // Descargar
-    const nombreArchivo = `aprobacion_ciclos_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`
-    const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-    saveAs(new Blob([buffer]), nombreArchivo)
-
-    alert(`✅ Exportado: ${evaluaciones.length} evaluaciones con sus ítems.`)
-  } catch (error) {
-    console.error(error)
-    alert('Error al exportar: ' + error.message)
-  } finally {
-    setExporting(false)
   }
-}
 
   const cargarExcel = (e) => {
     const file = e.target.files[0]
@@ -607,19 +431,16 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
       const headers = rows[0]
       const dataRows = rows.slice(1).filter(r => r.some(cell => cell))
-
-      const colMap = {
+      const idx = {
         vigencia: headers.findIndex(h => h?.toLowerCase() === 'vigencia'),
         ciclo: headers.findIndex(h => h?.toLowerCase() === 'ciclo'),
         tipo: headers.findIndex(h => h?.toLowerCase() === 'tipo')
       }
-
       const parsed = dataRows.map(row => ({
-        vigencia: row[colMap.vigencia] || '',
-        ciclo: row[colMap.ciclo] || '',
-        tipo: row[colMap.tipo] || 'fisico'
+        vigencia: row[idx.vigencia] || '',
+        ciclo: row[idx.ciclo] || '',
+        tipo: row[idx.tipo] || 'fisico'
       })).filter(r => r.vigencia && r.ciclo)
-
       setExcelData(parsed)
       setExcelPreview(parsed.slice(0,5))
       setShowExcelModal(true)
@@ -631,44 +452,36 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
     setLoading(true)
     try {
       const user = (await supabase.auth.getUser()).data.user
-      const evaluaciones = []
+      let insertados = 0
       for (const reg of excelData) {
-        // Verificar si ya existe evaluación para esa vigencia+ciclo (para evitar duplicados)
         const { data: existente } = await supabase
           .from('aprobaciones_ciclos')
           .select('id')
           .eq('vigencia', reg.vigencia)
           .eq('ciclo', reg.ciclo)
           .maybeSingle()
-        if (existente) {
-          console.log(`Evaluación ${reg.ciclo} ya existe, omitiendo...`)
-          continue
-        }
-        evaluaciones.push({
+        if (existente) continue
+        const { error } = await supabase.from('aprobaciones_ciclos').insert({
           vigencia: reg.vigencia,
           ciclo: reg.ciclo,
           tipo: reg.tipo,
-          resultado: 'PENDIENTE', // inicialmente pendiente hasta que se complete
+          resultado: 'PENDIENTE',
           creado_por_id: user?.id,
           creado_por_nombre: user?.email
         })
+        if (error) throw error
+        insertados++
       }
-      if (evaluaciones.length === 0) {
-        alert('No se encontraron evaluaciones nuevas para cargar')
-        setShowExcelModal(false)
-        return
-      }
-      const { error } = await supabase.from('aprobaciones_ciclos').insert(evaluaciones)
-      if (error) throw error
+      if (insertados === 0) alert('No se encontraron evaluaciones nuevas')
+      else alert(`✅ ${insertados} evaluaciones cargadas. Recuerda evaluar los ítems.`)
       setShowExcelModal(false)
       setExcelData([])
       setExcelPreview([])
       await cargarEvaluaciones()
       await cargarEstadisticas()
-      alert(`✅ ${evaluaciones.length} evaluaciones cargadas exitosamente. Recuerda que los ítems deben ser evaluados uno por uno.`)
     } catch (error) {
       console.error(error)
-      alert('Error al cargar desde Excel')
+      alert('Error al cargar Excel')
     } finally {
       setLoading(false)
     }
@@ -696,13 +509,10 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
     setPage(1)
   }
 
-  // ==================== RENDERIZADO ====================
   const hayPendienteEnForm = Object.values(itemsEstado).some(i => i.estado === 'pendiente')
   const hayRechazadoEnForm = Object.values(itemsEstado).some(i => i.estado === 'rechazado')
   const resultadoParcial = hayPendienteEnForm ? 'PENDIENTE' : (hayRechazadoEnForm ? 'RECHAZADO' : 'APROBADO')
-  const colorResultadoParcial = 
-    resultadoParcial === 'APROBADO' ? '#10B981' : 
-    resultadoParcial === 'RECHAZADO' ? '#EF4444' : '#F59E0B'
+  const colorResultadoParcial = resultadoParcial === 'APROBADO' ? '#10B981' : (resultadoParcial === 'RECHAZADO' ? '#EF4444' : '#F59E0B')
 
   return (
     <div className="page">
@@ -711,375 +521,90 @@ export default function AprobacionCiclosWeb({ onBack, rol }) {
         <h1>Aprobación de Ciclos</h1>
         {rol === 'admin' && <span className="user-role">Admin</span>}
       </header>
-
-      {/* Tarjetas de resumen */}
       <div style={{ display: 'flex', gap: 20, marginBottom: 20, flexWrap: 'wrap' }}>
         <div className="stat-card" style={{ flex: 1, minWidth: 150 }}>
           <div className="stat-icon" style={{ background: '#dbeafe' }}>📋</div>
-          <div className="stat-info">
-            <div className="stat-label">Total Evaluaciones</div>
-            <div className="stat-value">{stats.totalEvaluaciones}</div>
-          </div>
+          <div className="stat-info"><div className="stat-label">Total Evaluaciones</div><div className="stat-value">{stats.totalEvaluaciones}</div></div>
         </div>
         <div className="stat-card" style={{ flex: 1, minWidth: 150 }}>
           <div className="stat-icon" style={{ background: '#dcfce7' }}>✅</div>
-          <div className="stat-info">
-            <div className="stat-label">Aprobadas</div>
-            <div className="stat-value">{stats.aprobadas}</div>
-          </div>
+          <div className="stat-info"><div className="stat-label">Aprobadas</div><div className="stat-value">{stats.aprobadas}</div></div>
         </div>
         <div className="stat-card" style={{ flex: 1, minWidth: 150 }}>
           <div className="stat-icon" style={{ background: '#fee2e2' }}>❌</div>
-          <div className="stat-info">
-            <div className="stat-label">Rechazadas</div>
-            <div className="stat-value">{stats.rechazadas}</div>
-          </div>
+          <div className="stat-info"><div className="stat-label">Rechazadas</div><div className="stat-value">{stats.rechazadas}</div></div>
         </div>
-        <button className="action-btn primary" onClick={() => setShowStatsModal(true)} style={{ alignSelf: 'center' }}>
-          📊 Ver Estadísticas
-        </button>
+        <button className="action-btn primary" onClick={() => setShowStatsModal(true)} style={{ alignSelf: 'center' }}>📊 Ver Estadísticas</button>
       </div>
 
-      {/* Botones de acción */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-        <button className="action-btn secondary" onClick={descargarPlantilla}>
-          📥 Plantilla Excel
-        </button>
-        <label className={`action-btn secondary ${exporting ? 'disabled' : ''}`}>
-          📤 Cargar Excel
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={cargarExcel} style={{ display: 'none' }} disabled={exporting} />
-        </label>
-        <button className="action-btn success" onClick={exportarExcel} disabled={exporting || loading}>
-          {exporting ? '⏳ Exportando...' : '📊 Exportar Excel'}
-        </button>
-        <button
-          className="action-btn primary"
-          onClick={() => {
-            setFormData({ vigencia: '', ciclo: '', tipo: 'fisico' })
-            setEditingId(null)
-            setShowForm(true)
-          }}
-        >
-          + Nueva Evaluación
-        </button>
+        <button className="action-btn secondary" onClick={descargarPlantilla}>📥 Plantilla Excel</button>
+        <label className={`action-btn secondary ${exporting ? 'disabled' : ''}`}>📤 Cargar Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={cargarExcel} style={{ display: 'none' }} disabled={exporting} /></label>
+        <button className="action-btn success" onClick={exportarExcel} disabled={exporting || loading}>{exporting ? '⏳ Exportando...' : '📊 Exportar Excel'}</button>
+        <button className="action-btn primary" onClick={() => { setFormData({ vigencia: '', ciclo: '', tipo: 'fisico' }); setEditingId(null); setShowForm(true); }}>+ Nueva Evaluación</button>
       </div>
 
-      {/* Modal de estadísticas */}
+      {/* Modal de estadísticas (sin cambios) */}
       {showStatsModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 1200, maxHeight: '90vh' }}>
-            <div className="modal-header">
-              <h2>📊 Estadísticas de Aprobación de Ciclos</h2>
-              <button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button>
-            </div>
+            <div className="modal-header"><h2>📊 Estadísticas de Aprobación de Ciclos</h2><button className="close-btn" onClick={() => setShowStatsModal(false)}>✕</button></div>
             <div className="modal-body" style={{ overflowY: 'auto' }}>
               <div className="charts-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
-                
-                {/* Gráfico de pastel - Resultados generales */}
-                <div className="dashboard-card">
-                  <h3>📊 Resultados Generales</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Aprobadas', value: stats.aprobadas, color: '#10B981' },
-                            { name: 'Rechazadas', value: stats.rechazadas, color: '#EF4444' },
-                            { name: 'Pendientes', value: stats.pendientes, color: '#F59E0B' }
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name, percent }) => `${name}: ${(percent*100).toFixed(0)}%`}
-                        >
-                          {stats.aprobadas > 0 && <Cell fill="#10B981" />}
-                          {stats.rechazadas > 0 && <Cell fill="#EF4444" />}
-                          {stats.pendientes > 0 && <Cell fill="#F59E0B" />}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Gráfico de barras por mes */}
-                <div className="dashboard-card">
-                  <h3>📅 Evolución por Mes</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porMes}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="aprobadas" name="Aprobadas" stackId="a" fill="#10B981" />
-                        <Bar dataKey="rechazadas" name="Rechazadas" stackId="a" fill="#EF4444" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Gráfico por tipo */}
-                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}>
-                  <h3>📌 Resultados por Tipo de Servicio</h3>
-                  <div style={{ height: 300 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.porTipo} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" />
-                        <YAxis dataKey="tipo" type="category" />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="aprobadas" name="Aprobadas" fill="#10B981" radius={[0,4,4,0]}>
-                          <LabelList dataKey="aprobadas" position="right" formatter={formatearNumero} />
-                        </Bar>
-                        <Bar dataKey="rechazadas" name="Rechazadas" fill="#EF4444" radius={[0,4,4,0]}>
-                          <LabelList dataKey="rechazadas" position="right" formatter={formatearNumero} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
+                <div className="dashboard-card"><h3>📊 Resultados Generales</h3><div style={{ height: 300 }}>
+                  <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={[{ name: 'Aprobadas', value: stats.aprobadas, color: '#10B981' }, { name: 'Rechazadas', value: stats.rechazadas, color: '#EF4444' }, { name: 'Pendientes', value: stats.pendientes, color: '#F59E0B' }]} cx="50%" cy="50%" labelLine={false} outerRadius={80} dataKey="value" label={({ name, percent }) => `${name}: ${(percent*100).toFixed(0)}%`} >{stats.aprobadas>0 && <Cell fill="#10B981"/>}{stats.rechazadas>0 && <Cell fill="#EF4444"/>}{stats.pendientes>0 && <Cell fill="#F59E0B"/>}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div></div>
+                <div className="dashboard-card"><h3>📅 Evolución por Mes</h3><div style={{ height: 300 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.porMes}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="mes" tick={{ fontSize: 10 }} /><YAxis /><Tooltip /><Legend /><Bar dataKey="aprobadas" name="Aprobadas" stackId="a" fill="#10B981" /><Bar dataKey="rechazadas" name="Rechazadas" stackId="a" fill="#EF4444" /></BarChart></ResponsiveContainer></div></div>
+                <div className="dashboard-card" style={{ gridColumn: 'span 2' }}><h3>📌 Resultados por Tipo</h3><div style={{ height: 300 }}><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.porTipo} layout="vertical"><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" /><YAxis dataKey="tipo" type="category" /><Tooltip /><Legend /><Bar dataKey="aprobadas" name="Aprobadas" fill="#10B981" radius={[0,4,4,0]}><LabelList dataKey="aprobadas" position="right" formatter={formatearNumero} /></Bar><Bar dataKey="rechazadas" name="Rechazadas" fill="#EF4444" radius={[0,4,4,0]}><LabelList dataKey="rechazadas" position="right" formatter={formatearNumero} /></Bar></BarChart></ResponsiveContainer></div></div>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="primary-btn" onClick={() => setShowStatsModal(false)}>Cerrar</button>
-            </div>
+            <div className="modal-footer"><button className="primary-btn" onClick={() => setShowStatsModal(false)}>Cerrar</button></div>
           </div>
         </div>
       )}
 
-      {/* Modal de carga Excel */}
+      {/* Modal carga Excel */}
       {showExcelModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 800 }}>
-            <div className="modal-header">
-              <h2>Vista previa - Evaluaciones a cargar</h2>
-              <button className="close-btn" onClick={() => setShowExcelModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p><strong>{excelData.length}</strong> evaluaciones para cargar</p>
-              <div className="table-container" style={{ maxHeight: 300, overflow: 'auto' }}>
-                <table className="data-table">
-                  <thead><tr><th>Vigencia</th><th>Ciclo</th><th>Tipo</th></tr></thead>
-                  <tbody>
-                    {excelPreview.map((r, i) => (
-                      <tr key={i}><td>{r.vigencia}</td><td>{r.ciclo}</td><td>{r.tipo}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {excelData.length > 5 && <p style={{ marginTop: 8, color: '#64748b' }}>... y {excelData.length - 5} más</p>}
-            </div>
-            <div className="modal-footer">
-              <button className="secondary-btn" onClick={() => setShowExcelModal(false)}>Cancelar</button>
-              <button className="primary-btn" onClick={guardarExcel} disabled={loading}>
-                {loading ? 'Cargando...' : `Cargar ${excelData.length} evaluaciones`}
-              </button>
-            </div>
+            <div className="modal-header"><h2>Vista previa – Evaluaciones a cargar</h2><button className="close-btn" onClick={() => setShowExcelModal(false)}>✕</button></div>
+            <div className="modal-body"><p><strong>{excelData.length}</strong> evaluaciones</p><div className="table-container" style={{ maxHeight: 300, overflow: 'auto' }}><table className="data-table"><thead><tr><th>Vigencia</th><th>Ciclo</th><th>Tipo</th></tr></thead><tbody>{excelPreview.map((r,i)=><tr key={i}><td>{r.vigencia}</td><td>{r.ciclo}</td><td>{r.tipo}</td></tr>)}</tbody></table></div>{excelData.length>5 && <p style={{ marginTop:8,color:'#64748b'}}>... y {excelData.length-5} más</p>}</div>
+            <div className="modal-footer"><button className="secondary-btn" onClick={() => setShowExcelModal(false)}>Cancelar</button><button className="primary-btn" onClick={guardarExcel} disabled={loading}>{loading ? 'Cargando...' : `Cargar ${excelData.length}`}</button></div>
           </div>
         </div>
       )}
 
-      {/* Modal del formulario de evaluación */}
+      {/* Modal formulario */}
       {showForm && (
         <div className="form-modal">
           <div className="form-modal-content" style={{ maxWidth: 1000, maxHeight: '90vh' }}>
-            <div className="form-modal-header">
-              <h2>{editingId ? 'Editar Evaluación' : 'Nueva Evaluación de Ciclos'}</h2>
-              <button className="close-btn" onClick={() => setShowForm(false)}>✕</button>
-            </div>
+            <div className="form-modal-header"><h2>{editingId ? 'Editar Evaluación' : 'Nueva Evaluación'}</h2><button className="close-btn" onClick={() => setShowForm(false)}>✕</button></div>
             <div className="form-modal-body">
-              <div className="form-section">
-                <h3>📋 Datos Generales</h3>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Vigencia (Mes - Año) *</label>
-                    <input
-                      type="month"
-                      value={formData.vigencia}
-                      onChange={e => setFormData({...formData, vigencia: e.target.value})}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Ciclo *</label>
-                    <input
-                      type="text"
-                      value={formData.ciclo}
-                      onChange={e => setFormData({...formData, ciclo: e.target.value})}
-                      placeholder="Ej: CICLO_001"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Tipo de Servicio *</label>
-                    <select
-                      value={formData.tipo}
-                      onChange={e => setFormData({...formData, tipo: e.target.value})}
-                    >
-                      <option value="fisico">Físico</option>
-                      <option value="digital">Digital</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3>📋 Validación de Ítems</h3>
-                  <div style={{ padding: '6px 12px', borderRadius: 20, backgroundColor: colorResultadoParcial + '20', border: `1px solid ${colorResultadoParcial}` }}>
-                    <strong style={{ color: colorResultadoParcial }}>Resultado parcial: {resultadoParcial}</strong>
-                  </div>
-                </div>
-                <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-                  {Object.entries(itemsEstado).map(([idx, item]) => (
-                    <div key={idx} className="form-group" style={{ border: '1px solid #e2e8f0', borderRadius: 12, marginBottom: 12, padding: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                        <div style={{ flex: 1 }}>
-                          <strong>{parseInt(idx)+1}. {item.texto}</strong>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            className={`badge ${item.estado === 'aprobado' ? 'success' : 'neutral'}`}
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => setEstadoItem(parseInt(idx), 'aprobado')}
-                          >
-                            ✅ Aprobar
-                          </button>
-                          <button
-                            className={`badge ${item.estado === 'rechazado' ? 'danger' : 'neutral'}`}
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => setEstadoItem(parseInt(idx), 'rechazado')}
-                          >
-                            ❌ Rechazar
-                          </button>
-                          <button className="badge neutral" onClick={() => toggleExpandido(parseInt(idx))}>
-                            {item.expandido ? '▲' : '▼'}
-                          </button>
-                        </div>
-                      </div>
-                      {item.expandido && item.estado === 'rechazado' && (
-                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
-                          <div className="form-group">
-                            <label>Inconsistencias (opcional):</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                              {INCONSISTENCIAS.map(inc => (
-                                <button
-                                  key={inc}
-                                  className={`badge ${item.inconsistencias.includes(inc) ? 'danger' : 'neutral'}`}
-                                  onClick={() => toggleInconsistencia(parseInt(idx), inc)}
-                                  style={{ cursor: 'pointer' }}
-                                >
-                                  {inc}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="form-group">
-                            <label>Observación * (obligatoria):</label>
-                            <textarea
-                              rows="2"
-                              className="form-input"
-                              placeholder="Detalla la razón del rechazo..."
-                              value={item.observacion}
-                              onChange={e => cambiarObservacion(parseInt(idx), e.target.value)}
-                              style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #cbd5e1' }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {item.expandido && item.estado === 'aprobado' && (
-                        <div style={{ marginTop: 12, padding: 8, backgroundColor: '#dcfce7', borderRadius: 8, color: '#166534' }}>
-                          ✓ Ítem aprobado sin observaciones
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <div className="form-section"><h3>📋 Datos Generales</h3><div className="form-grid"><div className="form-group"><label>Vigencia (Mes - Año) *</label><input type="month" value={formData.vigencia} onChange={e => setFormData({...formData, vigencia: e.target.value})} /></div><div className="form-group"><label>Ciclo *</label><input type="text" value={formData.ciclo} onChange={e => setFormData({...formData, ciclo: e.target.value})} placeholder="Ej: CICLO_001" /></div><div className="form-group"><label>Tipo *</label><select value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})}><option value="fisico">Físico</option><option value="digital">Digital</option></select></div></div></div>
+              <div className="form-section"><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}><h3>📋 Validación de Ítems</h3><div style={{ padding:'6px 12px', borderRadius:20, backgroundColor:colorResultadoParcial+'20', border:`1px solid ${colorResultadoParcial}` }}><strong style={{ color:colorResultadoParcial }}>Resultado parcial: {resultadoParcial}</strong></div></div><div style={{ maxHeight:'50vh', overflowY:'auto' }}>{Object.entries(itemsEstado).map(([idx,item])=>(
+                <div key={idx} className="form-group" style={{ border:'1px solid #e2e8f0', borderRadius:12, marginBottom:12, padding:12 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, flexWrap:'wrap' }}><div style={{ flex:1 }}><strong>{parseInt(idx)+1}. {item.texto}</strong></div><div style={{ display:'flex', gap:8 }}><button className={`badge ${item.estado==='aprobado'?'success':'neutral'}`} style={{ cursor:'pointer' }} onClick={()=>setEstadoItem(parseInt(idx),'aprobado')}>✅ Aprobar</button><button className={`badge ${item.estado==='rechazado'?'danger':'neutral'}`} style={{ cursor:'pointer' }} onClick={()=>setEstadoItem(parseInt(idx),'rechazado')}>❌ Rechazar</button><button className="badge neutral" onClick={()=>toggleExpandido(parseInt(idx))}>{item.expandido?'▲':'▼'}</button></div></div>
+                  {item.expandido && item.estado==='rechazado' && (<div style={{ marginTop:12, paddingTop:12, borderTop:'1px solid #e2e8f0' }}><div className="form-group"><label>Inconsistencias (opcional):</label><div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:4 }}>{INCONSISTENCIAS.map(inc=>(<button key={inc} className={`badge ${item.inconsistencias.includes(inc)?'danger':'neutral'}`} onClick={()=>toggleInconsistencia(parseInt(idx),inc)} style={{ cursor:'pointer' }}>{inc}</button>))}</div></div><div className="form-group"><label>Observación * (obligatoria):</label><textarea rows="2" className="form-input" placeholder="Detalla la razón del rechazo..." value={item.observacion} onChange={e=>cambiarObservacion(parseInt(idx),e.target.value)} style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #cbd5e1' }} /></div></div>)}
+                  {item.expandido && item.estado==='aprobado' && (<div style={{ marginTop:12, padding:8, backgroundColor:'#dcfce7', borderRadius:8, color:'#166534' }}>✓ Ítem aprobado sin observaciones</div>)}
+                </div>))}</div></div>
             </div>
-            <div className="form-modal-footer">
-              <button className="secondary-btn" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="primary-btn" onClick={guardarEvaluacion} disabled={loading}>
-                {loading ? 'Guardando...' : 'Guardar Evaluación'}
-              </button>
-            </div>
+            <div className="form-modal-footer"><button className="secondary-btn" onClick={() => setShowForm(false)}>Cancelar</button><button className="primary-btn" onClick={guardarEvaluacion} disabled={loading}>{loading ? 'Guardando...' : 'Guardar Evaluación'}</button></div>
           </div>
         </div>
       )}
 
-      {/* Filtros */}
       <div className="search-panel">
         <input type="date" placeholder="Fecha desde" value={filters.fecha_desde} onChange={e => setFilters({...filters, fecha_desde: e.target.value, page:1})} />
         <input type="date" placeholder="Fecha hasta" value={filters.fecha_hasta} onChange={e => setFilters({...filters, fecha_hasta: e.target.value, page:1})} />
         <input type="text" placeholder="Ciclo" value={filters.ciclo} onChange={e => setFilters({...filters, ciclo: e.target.value, page:1})} />
-        <select value={filters.resultado} onChange={e => setFilters({...filters, resultado: e.target.value, page:1})}>
-          <option value="">Todos los resultados</option>
-          <option value="APROBADO">APROBADO</option>
-          <option value="RECHAZADO">RECHAZADO</option>
-          <option value="PENDIENTE">PENDIENTE</option>
-        </select>
+        <select value={filters.resultado} onChange={e => setFilters({...filters, resultado: e.target.value, page:1})}><option value="">Todos</option><option value="APROBADO">APROBADO</option><option value="RECHAZADO">RECHAZADO</option><option value="PENDIENTE">PENDIENTE</option></select>
         <button onClick={resetFilters}>Limpiar</button>
       </div>
 
-      {/* Tabla de evaluaciones */}
       <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Vigencia</th>
-              <th>Ciclo</th>
-              <th>Tipo</th>
-              <th>Resultado</th>
-              <th>Fecha Creación</th>
-              <th>Creado Por</th>
-              {rol === 'admin' && <th>Acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {evaluaciones.map(e => (
-              <tr key={e.id}>
-                <td>{e.vigencia}</td>
-                <td>{e.ciclo}</td>
-                <td>{e.tipo === 'fisico' ? 'Físico' : 'Digital'}</td>
-                <td>
-                  <span className={`badge ${
-                    e.resultado === 'APROBADO' ? 'success' : 
-                    e.resultado === 'RECHAZADO' ? 'danger' : 'warning'
-                  }`}>
-                    {e.resultado}
-                  </span>
-                </td>
-                <td>{new Date(e.created_at).toLocaleDateString()}</td>
-                <td>{e.creado_por_nombre || '-'}</td>
-                {rol === 'admin' && (
-                  <td>
-                    <button className="icon-btn" onClick={() => eliminarEvaluacion(e.id)} style={{ marginRight: 8 }}>🗑️</button>
-                    {/* Podrías agregar edición si lo deseas */}
-                  </td>
-                )}
-              </tr>
-            ))}
-            {evaluaciones.length === 0 && (
-              <tr><td colSpan={rol === 'admin' ? 7 : 6} style={{ textAlign: 'center', padding: 40 }}>No hay evaluaciones registradas</td></tr>
-            )}
-          </tbody>
-        </table>
+        <table className="data-table"><thead><tr><th>Vigencia</th><th>Ciclo</th><th>Tipo</th><th>Resultado</th><th>Fecha Creación</th><th>Creado Por</th>{rol === 'admin' && <th>Acciones</th>}</tr></thead><tbody>{evaluaciones.map(e=>(
+          <tr key={e.id}><td>{e.vigencia}</td><td>{e.ciclo}</td><td>{e.tipo === 'fisico' ? 'Físico' : 'Digital'}</td><td><span className={`badge ${e.resultado==='APROBADO'?'success':e.resultado==='RECHAZADO'?'danger':'warning'}`}>{e.resultado}</span></td><td>{new Date(e.created_at).toLocaleDateString()}</td><td>{e.creado_por_nombre||'-'}</td>{rol === 'admin' && <td><button className="icon-btn" onClick={()=>eliminarEvaluacion(e.id)}>🗑️</button></td>}</tr>))}{evaluaciones.length===0 && <tr><td colSpan={rol==='admin'?7:6} style={{ textAlign:'center', padding:40 }}>No hay evaluaciones</td></tr>}</tbody></table>
       </div>
-
-      {/* Paginación */}
-      {totalCount > PAGE_SIZE && (
-        <div className="pagination">
-          <button disabled={page === 1} onClick={() => setPage(p => p-1)}>← Anterior</button>
-          <span>Página {page} de {Math.ceil(totalCount / PAGE_SIZE)}</span>
-          <button disabled={page >= Math.ceil(totalCount / PAGE_SIZE)} onClick={() => setPage(p => p+1)}>Siguiente →</button>
-        </div>
-      )}
+      {totalCount > PAGE_SIZE && <div className="pagination"><button disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button><span>Página {page} de {Math.ceil(totalCount/PAGE_SIZE)}</span><button disabled={page>=Math.ceil(totalCount/PAGE_SIZE)} onClick={()=>setPage(p=>p+1)}>Siguiente →</button></div>}
     </div>
   )
 }
