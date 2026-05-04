@@ -20,7 +20,7 @@ import AMI from './pages/AMI'
 import ProgramacionDiaria from './pages/ProgramacionDiaria'
 import ResultadosDigitales from './pages/ResultadosDigitales'
 import KPIMensual from './pages/KPIMensual'
-import Consultadigitales from './pages/Consultadigitales'   // 👈 Factura Digital
+import Consultadigitales from './pages/consultadigitales'   // 👈 Factura Digital
 
 // 👇 NUEVA PANTALLA
 import AprobacionCiclosWeb from './pages/AprobacionCiclosWeb'
