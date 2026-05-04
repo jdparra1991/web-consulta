@@ -409,35 +409,158 @@ export default function ProgramacionDiaria({ onBack, rol }) {
     }
   };
 
-  // Cargar desde Excel (simplificado)
+  // Descargar plantilla de Excel
+  const descargarPlantilla = () => {
+    const plantilla = [
+      { Fecha: '2026-04-13', Usuario: 'Ejemplo Usuario', Actividad: 'lectura', Ciclo: '40' },
+      { Fecha: '2026-04-13', Usuario: 'María López', Actividad: 'reparto', Ciclo: '60-160' },
+      { Fecha: '2026-04-14', Usuario: 'Carlos Ruiz', Actividad: 'revision', Ciclo: '20' }
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(plantilla);
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla_Programacion');
+    saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })]), 'plantilla_programacion.xlsx');
+  };
+
+  // Cargar desde Excel con validación detallada y detección de duplicados
   const cargarExcel = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(extension)) {
+      alert("Formato no soportado. Use .xlsx, .xls o .csv");
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const data = new Uint8Array(ev.target.result);
-      const wb = XLSX.read(data, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      const dataRows = rows.slice(1).filter(r => r.some(cell => cell));
-      const parsed = dataRows.map(row => ({
-        fecha: row[0] || obtenerFechaColombia(),
-        usuario: row[1] || '',
-        actividad: row[2] || '',
-        ciclo: row[3] ? row[3].toString() : '40'
-      })).filter(r => r.usuario && r.actividad);
-      setExcelData(parsed);
-      setExcelPreview(parsed.slice(0,5));
-      setShowExcelModal(true);
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        if (!rows || rows.length < 2) {
+          alert("El archivo debe tener al menos una fila de datos después del encabezado");
+          e.target.value = '';
+          return;
+        }
+        
+        const encabezados = rows[0].map(cell => (cell || "").toString().toLowerCase());
+        const colFechaIdx = encabezados.findIndex(h => h.includes("fecha"));
+        const colUsuarioIdx = encabezados.findIndex(h => h.includes("usuario"));
+        const colActividadIdx = encabezados.findIndex(h => h.includes("actividad"));
+        const colCicloIdx = encabezados.findIndex(h => h.includes("ciclo"));
+        
+        if (colFechaIdx === -1 || colUsuarioIdx === -1 || colActividadIdx === -1) {
+          alert("El archivo debe tener columnas que contengan: Fecha, Usuario y Actividad (Ciclo opcional)");
+          e.target.value = '';
+          return;
+        }
+        
+        const errores = [];
+        const datosValidos = [];
+        const fechaActual = obtenerFechaColombia();
+        
+        for (let i = 1; i < rows.length; i++) {
+          const fila = rows[i];
+          if (!fila || fila.every(cell => !cell || cell.toString().trim() === "")) continue;
+          
+          const fechaRaw = fila[colFechaIdx] ? fila[colFechaIdx].toString().trim() : "";
+          const usuario = fila[colUsuarioIdx] ? fila[colUsuarioIdx].toString().trim() : "";
+          const actividadRaw = fila[colActividadIdx] ? fila[colActividadIdx].toString().trim() : "";
+          const ciclo = fila[colCicloIdx] ? fila[colCicloIdx].toString().trim() : "40";
+          
+          let fechaValida = fechaRaw;
+          if (!fechaRaw) {
+            fechaValida = fechaActual;
+          } else {
+            const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!fechaRegex.test(fechaRaw)) {
+              errores.push(`Fila ${i+1}: Fecha "${fechaRaw}" no es YYYY-MM-DD`);
+              continue;
+            }
+            const [year, month, day] = fechaRaw.split('-').map(Number);
+            const fechaObj = new Date(Date.UTC(year, month-1, day));
+            if (fechaObj.getUTCFullYear() !== year || fechaObj.getUTCMonth()+1 !== month || fechaObj.getUTCDate() !== day) {
+              errores.push(`Fila ${i+1}: Fecha "${fechaRaw}" no es válida`);
+              continue;
+            }
+          }
+          
+          if (!usuario) {
+            errores.push(`Fila ${i+1}: Usuario vacío`);
+            continue;
+          }
+          
+          const actividad = actividadRaw.toLowerCase();
+          if (!['lectura', 'reparto', 'revision'].includes(actividad)) {
+            errores.push(`Fila ${i+1}: Actividad "${actividadRaw}" no válida (debe ser lectura, reparto o revision)`);
+            continue;
+          }
+          
+          datosValidos.push({
+            fecha: fechaValida,
+            usuario: usuario,
+            actividad: actividad,
+            ciclo: ciclo
+          });
+        }
+        
+        if (errores.length > 0) {
+          alert(`❌ Se encontraron ${errores.length} errores:\n${errores.slice(0, 10).join('\n')}${errores.length > 10 ? '\n... y más' : ''}`);
+          e.target.value = '';
+          return;
+        }
+        
+        if (datosValidos.length === 0) {
+          alert("No hay datos válidos para cargar");
+          e.target.value = '';
+          return;
+        }
+        
+        // Detectar duplicados dentro del mismo archivo
+        const clave = (item) => `${item.fecha}|${item.usuario}`;
+        const mapa = new Map();
+        for (const item of datosValidos) {
+          mapa.set(clave(item), item); // Sobrescribe, dejando el último
+        }
+        const datosUnicos = Array.from(mapa.values());
+        if (datosUnicos.length !== datosValidos.length) {
+          alert(`⚠️ Se encontraron ${datosValidos.length - datosUnicos.length} registros duplicados (misma fecha y usuario). Se cargará solo el último de cada grupo.`);
+        }
+        
+        setExcelData(datosUnicos);
+        setExcelPreview(datosUnicos.slice(0, 5));
+        setShowExcelModal(true);
+        
+      } catch (error) {
+        console.error("Error leyendo archivo:", error);
+        alert("Error al leer el archivo: " + error.message);
+        e.target.value = '';
+      }
+    };
+    reader.onerror = (err) => {
+      console.error("Error al leer el archivo:", err);
+      alert("Error al leer el archivo. Verifique que no esté corrupto.");
+      e.target.value = '';
     };
     reader.readAsArrayBuffer(file);
   };
 
+  // Guardar Excel con deduplicación final e inserción por lotes
   const guardarExcel = async () => {
+    if (!excelData.length) {
+      alert("No hay datos para guardar");
+      return;
+    }
+    
     setLoading(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
-      const toInsert = excelData.map(r => ({
+      
+      let toInsert = excelData.map(r => ({
         fecha: r.fecha,
         usuario_nombre: r.usuario,
         actividad: r.actividad.toLowerCase(),
@@ -445,10 +568,40 @@ export default function ProgramacionDiaria({ onBack, rol }) {
         creado_por_id: user?.id,
         creado_por_nombre: user?.email
       }));
-      const { error } = await supabase
-        .from('programacion_actividades')
-        .upsert(toInsert, { onConflict: 'fecha, usuario_nombre' });
-      if (error) throw error;
+      
+      // Deduplicación final (por si acaso)
+      const uniqueMap = new Map();
+      for (const item of toInsert) {
+        const key = `${item.fecha}|${item.usuario_nombre}`;
+        uniqueMap.set(key, item);
+      }
+      toInsert = Array.from(uniqueMap.values());
+      
+      // Insertar en lotes de 100 para evitar problemas de tamaño y conflictos
+      const batchSize = 100;
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (let i = 0; i < toInsert.length; i += batchSize) {
+        const batch = toInsert.slice(i, i + batchSize);
+        const { error } = await supabase
+          .from('programacion_actividades')
+          .upsert(batch, { onConflict: 'fecha, usuario_nombre' });
+        
+        if (error) {
+          console.error(`Error en lote ${i/batchSize + 1}:`, error);
+          errorCount += batch.length;
+        } else {
+          successCount += batch.length;
+        }
+      }
+      
+      if (errorCount > 0) {
+        alert(`⚠️ Se guardaron ${successCount} registros, pero ${errorCount} fallaron. Revisa la consola (F12) para más detalles.`);
+      } else {
+        alert(`✅ ${successCount} registros cargados correctamente`);
+      }
+      
       setShowExcelModal(false);
       setExcelData([]);
       setExcelPreview([]);
@@ -458,10 +611,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
       if (showMonthModal) {
         await cargarCalendario(mesCalendario);
       }
-      alert(`✅ ${toInsert.length} registros cargados`);
     } catch (error) {
-      console.error('Error guardando Excel:', error);
-      alert('Error al cargar Excel');
+      console.error('Error general guardando Excel:', error);
+      alert('Error inesperado al cargar Excel: ' + (error.message || error));
     } finally {
       setLoading(false);
     }
@@ -563,6 +715,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
         </div>
         <button className="action-btn success" onClick={exportarExcel} disabled={exporting || loading}>
           {exporting ? '⏳' : '📊 Exportar Excel'}
+        </button>
+        <button className="action-btn secondary" onClick={descargarPlantilla}>
+          📋 Descargar Plantilla
         </button>
         <label className="action-btn secondary">
           📥 Cargar Excel
@@ -904,11 +1059,9 @@ export default function ProgramacionDiaria({ onBack, rol }) {
                 <div style={{ textAlign: 'center', padding: 40 }}>Cargando calendario...</div>
               ) : (
                 <>
-                  {/* Días de la semana */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8, textAlign: 'center', fontWeight: 600 }}>
                     <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
                   </div>
-                  {/* Cuadrícula de días */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
                     {generarDiasDelMes(mesCalendario).map((dia, idx) => (
                       <div

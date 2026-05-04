@@ -32,7 +32,10 @@ export default function Home({ onSelect, onLogout, userEmail, rol }) {
         { id: 'devoluciones', titulo: '🔄 Devoluciones', descripcion: 'Devoluciones de reparto', color: '#f97316' },
         { id: 'nomenclatura', titulo: '🏷️ Asignación Nomenclatura', descripcion: 'Asignación de nomenclatura', color: '#8b5cf6' },
         { id: 'alistamiento-facturas', titulo: '📋 Alistamiento Facturas', descripcion: 'Gestión de alistamiento de facturas', color: '#9c89b8' },
-        { id: 'resultados-digitales', titulo: '📧 Resultados Digitales', descripcion: 'Gestión de resultados digitales', color: '#8b5cf6' }
+        { id: 'resultados-digitales', titulo: '📧 Resultados Digitales', descripcion: 'Gestión de resultados digitales', color: '#8b5cf6' },
+        { id: 'consultadigitales', titulo: '📧 Factura Digital', descripcion: 'Gestión de factura digital (ciclo, contrato, cliente)', color: '#ec4899' },
+        // 👇 NUEVA PANTALLA
+        { id: 'aprobacion-ciclos', titulo: '✅ Aprobación de Ciclos', descripcion: 'Evaluación y aprobación de ciclos de facturación', color: '#1abc9c' }
       ]
     }
   }

@@ -1,16 +1,9 @@
-// Dashboard.jsx
+// Dashboard.jsx - con corrección definitiva para repartos
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-  CartesianGrid,
-  Legend
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  ReferenceLine, CartesianGrid, Legend, LineChart, Line
 } from 'recharts'
 import '../index.css'
 
@@ -20,16 +13,14 @@ const METAS = {
   reparto: 60
 }
 
-function getMonthRange(month) {
+// Devuelve fechas ISO en UTC para el rango del mes
+function getMonthRangeUTC(month) {
   const [year, monthNum] = month.split('-').map(Number)
-  
-  // Crear fechas en UTC para evitar problemas de zona horaria
-  const start = new Date(Date.UTC(year, monthNum - 1, 1, 0, 0, 0))
-  const end = new Date(Date.UTC(year, monthNum, 1, 0, 0, 0))
-  
+  const startDate = new Date(Date.UTC(year, monthNum - 1, 1))
+  const endDate = new Date(Date.UTC(year, monthNum, 1))
   return {
-    from: start.toISOString(),
-    to: end.toISOString()
+    from: startDate.toISOString(),
+    to: endDate.toISOString()
   }
 }
 
@@ -61,228 +52,314 @@ export default function Dashboard() {
   })
   const [compare, setCompare] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [data, setData] = useState({
-    lecturas: [],
-    revisiones: [],
-    repartos: []  // Cambiado de 'reparto' a 'repartos'
-  })
+  const [loadingExtra, setLoadingExtra] = useState(false)
 
-  useEffect(() => {
-    cargar()
-  }, [month, compare])
+  const [data, setData] = useState({ lecturas: [], revisiones: [], repartos: [] })
+  const [viewType, setViewType] = useState('ciclo')
+  const [filtroCiclo, setFiltroCiclo] = useState('')
+  const [filtroUsuario, setFiltroUsuario] = useState('')
+  const [listaUsuarios, setListaUsuarios] = useState([])
+  const [dailyData, setDailyData] = useState([])
+  const [userData, setUserData] = useState([])
 
+  useEffect(() => { cargar() }, [month, compare])
+  useEffect(() => { if (viewType !== 'ciclo') cargarDatosExtra() }, [month, viewType, filtroCiclo, filtroUsuario])
+
+  // ========== VISTA POR CICLO ==========
   async function cargarTabla(tabla, meta, campoCiclo) {
-    const rango = getMonthRange(month)
-    
-    console.log(`Cargando ${tabla}...`)
-
-    const { data: actualData, error: errorActual } = await supabase
+    const { from, to } = getMonthRangeUTC(month)
+    let query = supabase
       .from(tabla)
       .select(campoCiclo)
-      .gte('created_at', rango.from)
-      .lt('created_at', rango.to)
+      .gte('created_at', from)
+      .lt('created_at', to)
 
-    if (errorActual) {
-      console.error(`Error cargando ${tabla}:`, errorActual)
-      return []
-    }
+    const { data: actualData, error } = await query
+    if (error) console.error(`Error en ${tabla}:`, error)
 
     let prevData = []
     if (compare) {
       const prevMonth = getPrevMonth(month)
-      const rangoPrev = getMonthRange(prevMonth)
+      const { from: prevFrom, to: prevTo } = getMonthRangeUTC(prevMonth)
       const { data: prev } = await supabase
         .from(tabla)
         .select(campoCiclo)
-        .gte('created_at', rangoPrev.from)
-        .lt('created_at', rangoPrev.to)
+        .gte('created_at', prevFrom)
+        .lt('created_at', prevTo)
       prevData = prev || []
     }
 
-    console.log(`${tabla} - Registros encontrados:`, actualData?.length || 0)
-
-    // Agrupar por ciclo
     const mapActual = {}
     actualData?.forEach(r => {
-      const ciclo = r[campoCiclo]
-      if (ciclo) {
-        mapActual[ciclo] = (mapActual[ciclo] || 0) + 1
+      const cicloVal = r[campoCiclo]
+      if (cicloVal && cicloVal.trim() !== '') {
+        mapActual[cicloVal] = (mapActual[cicloVal] || 0) + 1
       }
     })
-
     const mapPrev = {}
     prevData?.forEach(r => {
-      const ciclo = r[campoCiclo]
-      if (ciclo) {
-        mapPrev[ciclo] = (mapPrev[ciclo] || 0) + 1
+      const cicloVal = r[campoCiclo]
+      if (cicloVal && cicloVal.trim() !== '') {
+        mapPrev[cicloVal] = (mapPrev[cicloVal] || 0) + 1
       }
     })
 
-    const resultado = Object.keys(mapActual).map(ciclo => ({
+    return Object.keys(mapActual).map(ciclo => ({
       ciclo,
       actual: mapActual[ciclo],
       anterior: mapPrev[ciclo] || 0,
       cumple: mapActual[ciclo] >= meta
     }))
-
-    console.log(`${tabla} - Ciclos distintos:`, resultado.length)
-    return resultado
   }
 
   async function cargar() {
     setLoading(true)
     try {
-      console.log('=== INICIANDO CARGA DE DATOS ===')
-      console.log('Mes seleccionado:', month)
-      
-      // CORREGIDO: Usamos 'repartos' (plural) que es el nombre correcto de la tabla
       const [lecturas, revisiones, repartos] = await Promise.all([
         cargarTabla('lecturas', METAS.lecturas, 'ciclo'),
         cargarTabla('revisiones', METAS.revisiones, 'ciclo'),
-        cargarTabla('repartos', METAS.reparto, 'ciclo_reparto')  // ← CORREGIDO: 'repartos'
+        cargarTabla('repartos', METAS.reparto, 'ciclo_reparto')
       ])
-
-      console.log('=== RESULTADOS FINALES ===')
-      console.log('Lecturas:', lecturas.length, 'ciclos')
-      console.log('Revisiones:', revisiones.length, 'ciclos')
-      console.log('Repartos:', repartos.length, 'ciclos')
-
       setData({ lecturas, revisiones, repartos })
     } catch (error) {
-      console.error('Error cargando datos:', error)
+      console.error('Error cargando datos por ciclo:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  function Chart({ title, rows, meta, color }) {
-    // Si no hay datos, mostrar mensaje
-    if (!rows || rows.length === 0) {
+  // ========== DATOS PARA VISTAS DÍA Y USUARIO ==========
+  async function cargarDatosExtra() {
+    setLoadingExtra(true)
+    try {
+      const { from, to } = getMonthRangeUTC(month)
+      console.log('=== Cargando datos extra (día/usuario) ===')
+      console.log('Rango UTC:', from, 'a', to)
+
+      // Lecturas
+      const lecturasRes = await supabase
+        .from('lecturas')
+        .select('created_at, ciclo, creado_por_nombre')
+        .gte('created_at', from)
+        .lt('created_at', to)
+      
+      // Revisiones
+      const revisionesRes = await supabase
+        .from('revisiones')
+        .select('created_at, ciclo, creado_por_nombre')
+        .gte('created_at', from)
+        .lt('created_at', to)
+      
+      // Repartos: usamos el mismo campo created_at
+      const repartosRes = await supabase
+        .from('repartos')
+        .select('created_at, ciclo_reparto, creado_por_nombre')
+        .gte('created_at', from)
+        .lt('created_at', to)
+
+      let lecturas = lecturasRes.data || []
+      let revisiones = revisionesRes.data || []
+      let repartos = repartosRes.data || []
+
+      console.log('Raw - Lecturas:', lecturas.length, 'Revisiones:', revisiones.length, 'Repartos:', repartos.length)
+      
+      // Diagnóstico: si repartos sigue en 0, hacemos una consulta sin filtro de fecha para ver si la tabla tiene datos
+      if (repartos.length === 0) {
+        const { count, error: countError } = await supabase
+          .from('repartos')
+          .select('*', { count: 'exact', head: true })
+        if (!countError) {
+          console.log(`Total de repartos en toda la tabla: ${count}`)
+          if (count > 0) {
+            console.warn('La tabla repartos contiene registros, pero ninguno en el rango UTC actual. Verifica la zona horaria de created_at.')
+          }
+        }
+      } else {
+        console.log('Primer reparto:', repartos[0])
+      }
+
+      // Aplicar filtros extra (por ciclo y usuario)
+      if (filtroCiclo) {
+        lecturas = lecturas.filter(r => r.ciclo === filtroCiclo)
+        revisiones = revisiones.filter(r => r.ciclo === filtroCiclo)
+        repartos = repartos.filter(r => r.ciclo_reparto === filtroCiclo)
+      }
+      if (filtroUsuario) {
+        lecturas = lecturas.filter(r => r.creado_por_nombre === filtroUsuario)
+        revisiones = revisiones.filter(r => r.creado_por_nombre === filtroUsuario)
+        repartos = repartos.filter(r => r.creado_por_nombre === filtroUsuario)
+      }
+
+      console.log('Después de filtros - Lecturas:', lecturas.length, 'Revisiones:', revisiones.length, 'Repartos:', repartos.length)
+
+      // Función para extraer fecha en YYYY-MM-DD desde ISO string
+      const getDateStr = (timestamp) => timestamp ? timestamp.split('T')[0] : null
+
+      // --- Por día ---
+      const dayMap = new Map()
+      const addDay = (tipo, fechaStr) => {
+        if (!fechaStr) return
+        if (!dayMap.has(fechaStr)) {
+          dayMap.set(fechaStr, { fecha: fechaStr, lecturas: 0, revisiones: 0, repartos: 0, total: 0 })
+        }
+        const day = dayMap.get(fechaStr)
+        day[tipo]++
+        day.total++
+      }
+
+      lecturas.forEach(r => addDay('lecturas', getDateStr(r.created_at)))
+      revisiones.forEach(r => addDay('revisiones', getDateStr(r.created_at)))
+      repartos.forEach(r => addDay('repartos', getDateStr(r.created_at)))
+
+      const daily = Array.from(dayMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha))
+      setDailyData(daily)
+      console.log('Datos diarios generados:', daily.length)
+
+      // --- Por usuario ---
+      const userMap = new Map()
+      const addUser = (tipo, usuario) => {
+        if (!usuario) return
+        if (!userMap.has(usuario)) {
+          userMap.set(usuario, { usuario, lecturas: 0, revisiones: 0, repartos: 0, total: 0 })
+        }
+        const u = userMap.get(usuario)
+        u[tipo]++
+        u.total++
+      }
+
+      lecturas.forEach(r => addUser('lecturas', r.creado_por_nombre))
+      revisiones.forEach(r => addUser('revisiones', r.creado_por_nombre))
+      repartos.forEach(r => addUser('repartos', r.creado_por_nombre))
+
+      const users = Array.from(userMap.values()).sort((a, b) => b.total - a.total)
+      setUserData(users)
+      console.log('Usuarios encontrados:', users.length)
+
+      if (!filtroUsuario) {
+        const allUsers = new Set()
+        lecturas.forEach(r => r.creado_por_nombre && allUsers.add(r.creado_por_nombre))
+        revisiones.forEach(r => r.creado_por_nombre && allUsers.add(r.creado_por_nombre))
+        repartos.forEach(r => r.creado_por_nombre && allUsers.add(r.creado_por_nombre))
+        setListaUsuarios(Array.from(allUsers).sort())
+      }
+    } catch (error) {
+      console.error('Error cargando datos extra:', error)
+    } finally {
+      setLoadingExtra(false)
+    }
+  }
+
+  // ========== COMPONENTES DE VISTA ==========
+  const VistaPorCiclo = () => {
+    const Chart = ({ title, rows, meta, color }) => {
+      if (!rows.length) return <div className="dashboard-card">Sin datos para {title}</div>
+      const total = rows.reduce((a, b) => a + b.actual, 0)
+      const cumplen = rows.filter(r => r.cumple).length
+      const porcentaje = rows.length ? ((cumplen / rows.length) * 100).toFixed(1) : 0
+
       return (
-        <div className="dashboard-card" style={{ minHeight: 450, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center' }}>
-            <h3>{title}</h3>
-            <p style={{ color: '#64748b', marginTop: 16 }}>
-              No hay datos para {formatearMes(month)}
-            </p>
+        <div className="dashboard-card" style={{ height: 500 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div><h3>{title}</h3><div style={{ fontSize: 13 }}>Meta: {meta} por ciclo</div></div>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div><strong>{formatearNumero(total)}</strong><div style={{ fontSize: 11 }}>total</div></div>
+              <div><strong>{rows.length}</strong><div style={{ fontSize: 11 }}>ciclos</div></div>
+              <div><strong style={{ color }}>{cumplen}</strong><div style={{ fontSize: 11 }}>cumplen ({porcentaje}%)</div></div>
+            </div>
           </div>
+          <ResponsiveContainer width="100%" height="85%">
+            <BarChart data={rows}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="ciclo" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <ReferenceLine y={meta} stroke="#94a3b8" strokeDasharray="3 3" label="meta" />
+              <Bar dataKey="actual" name="Mes actual" fill={color} radius={[4, 4, 0, 0]} />
+              {compare && <Bar dataKey="anterior" name="Mes anterior" fill="#cbd5e1" radius={[4, 4, 0, 0]} />}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )
     }
 
-    const total = rows.reduce((acc, r) => acc + r.actual, 0)
-    const cumplen = rows.filter(r => r.cumple).length
-    const porcentaje = rows.length ? ((cumplen / rows.length) * 100).toFixed(1) : 0
+    return (
+      <div className="charts">
+        <Chart title="Lecturas por ciclo" rows={data.lecturas} meta={METAS.lecturas} color="#2563eb" />
+        <Chart title="Revisiones por ciclo" rows={data.revisiones} meta={METAS.revisiones} color="#d97706" />
+        <Chart title="Reparto por ciclo" rows={data.repartos} meta={METAS.reparto} color="#059669" />
+      </div>
+    )
+  }
+
+  const VistaPorDia = () => {
+    if (loadingExtra) return <div className="loading-spinner" />
+    if (!dailyData.length) return <div className="dashboard-card">No hay registros en el período con los filtros actuales.</div>
+    const totalGeneral = dailyData.reduce((acc, d) => acc + d.total, 0)
 
     return (
-      <div className="dashboard-card" style={{ height: 500, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexShrink: 0 }}>
-          <div>
-            <h3>{title}</h3>
-            <div style={{ fontSize: 13, color: '#64748b' }}>Meta: {meta} por ciclo</div>
-          </div>
-          <div style={{ display: 'flex', gap: 16, background: '#f8fafc', padding: '8px 16px', borderRadius: 12 }}>
-            <div style={{ textAlign: 'center' }}>
-              <strong style={{ fontSize: 20, color: '#0f172a' }}>{formatearNumero(total)}</strong>
-              <div style={{ fontSize: 11, color: '#64748b' }}>total</div>
-            </div>
-            <div style={{ width: 1, background: '#e2e8f0' }} />
-            <div style={{ textAlign: 'center' }}>
-              <strong style={{ fontSize: 20, color: '#0f172a' }}>{rows.length}</strong>
-              <div style={{ fontSize: 11, color: '#64748b' }}>ciclos</div>
-            </div>
-            <div style={{ width: 1, background: '#e2e8f0' }} />
-            <div style={{ textAlign: 'center' }}>
-              <strong style={{ fontSize: 20, color }}>{cumplen}</strong>
-              <div style={{ fontSize: 11, color: '#64748b' }}>cumplen ({porcentaje}%)</div>
-            </div>
-          </div>
+      <div className="dashboard-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h3>Actividad diaria</h3>
+          <div><strong>Total registros: {formatearNumero(totalGeneral)}</strong></div>
         </div>
+        <ResponsiveContainer width="100%" height={450}>
+          <LineChart data={dailyData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="fecha" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" height={60} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="lecturas" stroke="#2563eb" name="Lecturas" strokeWidth={2} />
+            <Line type="monotone" dataKey="revisiones" stroke="#d97706" name="Revisiones" strokeWidth={2} />
+            <Line type="monotone" dataKey="repartos" stroke="#059669" name="Reparto" strokeWidth={2} />
+            <Line type="monotone" dataKey="total" stroke="#8b5cf6" name="Total" strokeWidth={2} strokeDasharray="5 5" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    )
+  }
 
-        <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rows} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis 
-                dataKey="ciclo" 
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                axisLine={{ stroke: '#e2e8f0' }}
-                tickLine={false}
-                angle={-45}
-                textAnchor="end"
-                height={60}
-              />
-              <YAxis 
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                axisLine={{ stroke: '#e2e8f0' }}
-                tickLine={false}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  background: 'white',
-                  border: 'none',
-                  borderRadius: 12,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                  padding: '8px 12px'
-                }}
-              />
-              <Legend 
-                verticalAlign="top" 
-                height={36}
-                iconType="circle"
-                iconSize={8}
-              />
-              <ReferenceLine 
-                y={meta} 
-                stroke="#94a3b8" 
-                strokeDasharray="3 3"
-                label={{ 
-                  value: `meta ${meta}`, 
-                  position: 'right',
-                  fill: '#64748b',
-                  fontSize: 11
-                }} 
-              />
-              <Bar 
-                dataKey="actual" 
-                name="Mes actual" 
-                fill={color} 
-                radius={[4, 4, 0, 0]}
-                maxBarSize={40}
-              />
-              {compare && (
-                <Bar 
-                  dataKey="anterior" 
-                  name="Mes anterior" 
-                  fill="#cbd5e1" 
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={40}
-                />
-              )}
-            </BarChart>
-          </ResponsiveContainer>
+  const VistaPorUsuario = () => {
+    if (loadingExtra) return <div className="loading-spinner" />
+    if (!userData.length) return <div className="dashboard-card">No hay datos de usuarios en el período seleccionado.</div>
+
+    return (
+      <div className="dashboard-card">
+        <h3>Ranking de usuarios (por nombre)</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Lecturas</th>
+                <th>Revisiones</th>
+                <th>Reparto</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userData.map(u => (
+                <tr key={u.usuario}>
+                  <td><strong>{u.usuario || 'Sin nombre'}</strong></td>
+                  <td>{formatearNumero(u.lecturas)}</td>
+                  <td>{formatearNumero(u.revisiones)}</td>
+                  <td>{formatearNumero(u.repartos)}</td>
+                  <td><strong>{formatearNumero(u.total)}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     )
   }
 
-  if (loading) {
+  // ========== RENDER PRINCIPAL ==========
+  if (loading && viewType === 'ciclo') {
     return (
       <div className="page">
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ 
-              width: 40, 
-              height: 40, 
-              border: '3px solid #e2e8f0', 
-              borderTopColor: '#1e40af', 
-              borderRadius: '50%', 
-              animation: 'spin 1s linear infinite',
-              marginBottom: 16
-            }} />
-            <p style={{ color: '#64748b' }}>Cargando datos...</p>
-          </div>
-        </div>
+        <div className="loading-spinner" />
       </div>
     )
   }
@@ -290,92 +367,66 @@ export default function Dashboard() {
   return (
     <div className="page">
       <div className="topbar">
-        <h1>Dashboard de Ciclos</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <span className="badge neutral" style={{ textTransform: 'capitalize' }}>
-            {formatearMes(month)}
-          </span>
-        </div>
+        <h1>Dashboard de Operaciones</h1>
+        <div className="badge neutral">{formatearMes(month)}</div>
       </div>
 
       <div className="search-panel">
-        <input
-          type="month"
-          value={month}
-          onChange={e => setMonth(e.target.value)}
-          style={{ background: 'white' }}
-        />
-        
-        <label style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 8, 
-          padding: '0 12px',
-          background: 'white',
-          borderRadius: 12,
-          border: '1px solid #cbd5f5',
-          cursor: 'pointer'
-        }}>
-          <input
-            type="checkbox"
-            checked={compare}
-            onChange={e => setCompare(e.target.checked)}
-            style={{ width: 16, height: 16, cursor: 'pointer' }}
-          />
-          <span style={{ fontSize: 14, color: '#475569' }}>Comparar con mes anterior</span>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ background: 'white' }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'white', padding: '0 12px', borderRadius: 12, border: '1px solid #cbd5f5' }}>
+          <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
+          <span style={{ fontSize: 14 }}>Comparar meses (solo vista por ciclo)</span>
         </label>
 
-        <button 
-          onClick={cargar} 
-          disabled={loading}
-          style={{ background: '#1e40af' }}
-          className="search-btn"
-        >
-          Actualizar
-        </button>
+        <select value={viewType} onChange={e => setViewType(e.target.value)} style={{ background: 'white' }}>
+          <option value="ciclo">📊 Por ciclo</option>
+          <option value="dia">📅 Por día</option>
+          <option value="usuario">👥 Por usuario</option>
+        </select>
+
+        {viewType !== 'ciclo' && (
+          <>
+            <input
+              type="text"
+              placeholder="Filtrar por ciclo"
+              value={filtroCiclo}
+              onChange={e => setFiltroCiclo(e.target.value)}
+              style={{ background: 'white' }}
+            />
+            <select value={filtroUsuario} onChange={e => setFiltroUsuario(e.target.value)} style={{ background: 'white' }}>
+              <option value="">Todos los usuarios</option>
+              {listaUsuarios.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <button onClick={() => { setFiltroCiclo(''); setFiltroUsuario(''); }} className="secondary-btn">Limpiar filtros</button>
+          </>
+        )}
+
+        <button onClick={cargar} disabled={loading} className="primary-btn">Actualizar</button>
       </div>
 
-      {/* Summary Cards */}
+      {/* Tarjetas de resumen */}
       <div className="summary">
         <div className="summary-card">
-          <span>Total Lecturas</span>
-          <strong>{formatearNumero(data.lecturas.reduce((acc, r) => acc + r.actual, 0))}</strong>
-          <small>{data.lecturas.length} ciclos activos</small>
+          <span>Lecturas</span>
+          <strong>{formatearNumero(data.lecturas.reduce((a, b) => a + b.actual, 0))}</strong>
+          <small>{data.lecturas.length} ciclos</small>
         </div>
         <div className="summary-card">
-          <span>Total Revisiones</span>
-          <strong>{formatearNumero(data.revisiones.reduce((acc, r) => acc + r.actual, 0))}</strong>
-          <small>{data.revisiones.length} ciclos activos</small>
+          <span>Revisiones</span>
+          <strong>{formatearNumero(data.revisiones.reduce((a, b) => a + b.actual, 0))}</strong>
+          <small>{data.revisiones.length} ciclos</small>
         </div>
         <div className="summary-card">
-          <span>Total Reparto</span>
-          <strong>{formatearNumero(data.repartos.reduce((acc, r) => acc + r.actual, 0))}</strong>
-          <small>{data.repartos.length} ciclos activos</small>
+          <span>Reparto</span>
+          <strong>{formatearNumero(data.repartos.reduce((a, b) => a + b.actual, 0))}</strong>
+          <small>{data.repartos.length} ciclos</small>
         </div>
       </div>
 
-      <div className="charts">
-        <Chart
-          title="Lecturas por ciclo"
-          rows={data.lecturas}
-          meta={METAS.lecturas}
-          color="#2563eb"
-        />
-
-        <Chart
-          title="Revisiones por ciclo"
-          rows={data.revisiones}
-          meta={METAS.revisiones}
-          color="#d97706"
-        />
-
-        <Chart
-          title="Reparto por ciclo"
-          rows={data.repartos}  // ← CORREGIDO: ahora usa 'repartos'
-          meta={METAS.reparto}
-          color="#059669"
-        />
-      </div>
+      {viewType === 'ciclo' && <VistaPorCiclo />}
+      {viewType === 'dia' && <VistaPorDia />}
+      {viewType === 'usuario' && <VistaPorUsuario />}
     </div>
   )
 }

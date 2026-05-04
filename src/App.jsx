@@ -20,6 +20,10 @@ import AMI from './pages/AMI'
 import ProgramacionDiaria from './pages/ProgramacionDiaria'
 import ResultadosDigitales from './pages/ResultadosDigitales'
 import KPIMensual from './pages/KPIMensual'
+import Consultadigitales from './pages/Consultadigitales'   // 👈 Factura Digital
+
+// 👇 NUEVA PANTALLA
+import AprobacionCiclosWeb from './pages/AprobacionCiclosWeb'
 
 // Home
 import Home from './pages/Home'
@@ -204,6 +208,13 @@ export default function App() {
             <button className={page === 'resultados-digitales' ? 'active' : ''} onClick={() => setPage('resultados-digitales')}>
               📧 Resultados Digitales
             </button>
+            <button className={page === 'consultadigitales' ? 'active' : ''} onClick={() => setPage('consultadigitales')}>
+              📧 Factura Digital
+            </button>
+            {/* 👇 NUEVO BOTÓN */}
+            <button className={page === 'aprobacion-ciclos' ? 'active' : ''} onClick={() => setPage('aprobacion-ciclos')}>
+              ✅ Aprobación de Ciclos
+            </button>
           </div>
         </nav>
 
@@ -233,6 +244,9 @@ export default function App() {
         {page === 'programacion-diaria' && <ProgramacionDiaria rol={rol} onBack={handleBackToHome} />}
         {page === 'resultados-digitales' && <ResultadosDigitales rol={rol} onBack={handleBackToHome} />}
         {page === 'kpi-mensual' && <KPIMensual onBack={handleBackToHome} />}
+        {page === 'consultadigitales' && <Consultadigitales rol={rol} onBack={handleBackToHome} />}
+        {/* 👇 NUEVA PANTALLA */}
+        {page === 'aprobacion-ciclos' && <AprobacionCiclosWeb rol={rol} onBack={handleBackToHome} />}
       </main>
     </div>
   )
