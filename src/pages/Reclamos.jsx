@@ -4,7 +4,7 @@ import {
   BarChart,
   Bar,
   XAxis,
- YAxis,
+  YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
@@ -222,17 +222,17 @@ export default function Reclamos({ onBack, rol }) {
     }
   }
 
-  // ==================== FUNCIÓN DE DESCARGA DE PLANTILLA ====================
+  // ==================== DESCARGA DE PLANTILLA CON COLUMNA FECHA ====================
   const descargarPlantilla = () => {
     const wb = XLSX.utils.book_new();
 
-    // --- Hoja 1: Instructivo (estático) ---
+    // --- Hoja 1: Instructivo (actualizado) ---
     const instructivo = [
       ['INSTRUCTIVO PARA CARGA DE RECLAMOS'],
       [''],
       ['1. FORMATO DE FECHAS:'],
-      ['   • La fecha del reclamo se asignará automáticamente al cargar (fecha actual).'],
-      ['   • No es necesario incluir una columna de fecha en el archivo.'],
+      ['   • La columna "FECHA RECLAMO" debe tener formato YYYY-MM-DD (ej: 2025-03-15).'],
+      ['   • Si se deja en blanco o tiene formato inválido, se usará la fecha actual automáticamente.'],
       [''],
       ['2. CAMPOS DE TEXTO:'],
       ['   • Ciclo, Contrato, Nombre, Contacto, Dirección, Ruta, Consecutivos, Digital, Gestión, Observación, Gestión Realizada, Justificación: texto libre.'],
@@ -251,23 +251,24 @@ export default function Reclamos({ onBack, rol }) {
       ...CAUSALES.map(c => [`   • ${c}`]),
       [''],
       ['6. COLUMNAS (respetar este orden):'],
-      ['   • Columna A: CICLO (texto)'],
-      ['   • Columna B: CONTRATO (texto)'],
-      ['   • Columna C: TELECOMUNICACIONES (Sí/No)'],
-      ['   • Columna D: SERVICIOS PUBLICOS (Sí/No)'],
-      ['   • Columna E: NOMBRE (texto)'],
-      ['   • Columna F: CONTACTO (texto)'],
-      ['   • Columna G: DIRECCION DEL RECLAMO (texto)'],
-      ['   • Columna H: RUTA (texto)'],
-      ['   • Columna I: CONSECUTIVOS (texto)'],
-      ['   • Columna J: DIGITAL (texto)'],
-      ['   • Columna K: MEDIO DE RECEPCION RECLAMO (texto)'],
-      ['   • Columna L: Motivo (texto)'],
-      ['   • Columna M: GESTION (texto)'],
-      ['   • Columna N: OBSERVACION RECLAMO (texto)'],
-      ['   • Columna O: CAUSAL (texto)'],
-      ['   • Columna P: GESTION REALIZADA (texto)'],
-      ['   • Columna Q: JUSTIFICACION (texto)'],
+      ['   • Columna A: FECHA RECLAMO (YYYY-MM-DD)'],
+      ['   • Columna B: CICLO'],
+      ['   • Columna C: CONTRATO'],
+      ['   • Columna D: TELECOMUNICACIONES (Sí/No)'],
+      ['   • Columna E: SERVICIOS PUBLICOS (Sí/No)'],
+      ['   • Columna F: NOMBRE'],
+      ['   • Columna G: CONTACTO'],
+      ['   • Columna H: DIRECCION DEL RECLAMO'],
+      ['   • Columna I: RUTA'],
+      ['   • Columna J: CONSECUTIVOS'],
+      ['   • Columna K: DIGITAL'],
+      ['   • Columna L: MEDIO DE RECEPCION RECLAMO'],
+      ['   • Columna M: Motivo'],
+      ['   • Columna N: GESTION'],
+      ['   • Columna O: OBSERVACION RECLAMO'],
+      ['   • Columna P: CAUSAL'],
+      ['   • Columna Q: GESTION REALIZADA'],
+      ['   • Columna R: JUSTIFICACION'],
       [''],
       ['7. IMPORTANTE:'],
       ['   • El archivo debe tener exactamente estos encabezados (en mayúsculas como se indica).'],
@@ -277,19 +278,20 @@ export default function Reclamos({ onBack, rol }) {
     wsInstructivo['!cols'] = [{ wch: 80 }];
     XLSX.utils.book_append_sheet(wb, wsInstructivo, 'Instructivo');
 
-    // --- Hoja 2: Ejemplo con datos ---
+    // --- Hoja 2: Ejemplo con datos (incluye fecha) ---
     const ejemploHeader = [
-      'CICLO', 'CONTRATO', 'TELECOMUNICACIONES', 'SERVICIOS PUBLICOS', 'NOMBRE',
-      'CONTACTO', 'DIRECCION DEL RECLAMO', 'RUTA', 'CONSECUTIVOS', 'DIGITAL',
+      'FECHA RECLAMO', 'CICLO', 'CONTRATO', 'TELECOMUNICACIONES', 'SERVICIOS PUBLICOS',
+      'NOMBRE', 'CONTACTO', 'DIRECCION DEL RECLAMO', 'RUTA', 'CONSECUTIVOS', 'DIGITAL',
       'MEDIO DE RECEPCION RECLAMO', 'Motivo', 'GESTION', 'OBSERVACION RECLAMO',
       'CAUSAL', 'GESTION REALIZADA', 'JUSTIFICACION'
     ];
     const ejemploData = [
-      ['40', 'CT-001', 'Sí', 'Sí', 'Juan Pérez', '3001234567', 'Calle 123', 'RUTA-01', 'CONS-001', 'Sí', 'WhatsApp', 'Facturación', 'Llamada', 'Cliente insatisfecho', 'Error humano', 'Se generó orden', 'Se envió técnico'],
-      ['42', 'CT-002', 'No', 'Sí', 'María Gómez', '3107654321', 'Carrera 50', 'RUTA-02', 'CONS-002', 'No', 'Llamada telefónica', 'Medidor', 'Revisión', 'Medidor dañado', 'Falla técnica', 'Se programó visita', 'Pendiente'],
+      ['2025-03-15', '40', 'CT-001', 'Sí', 'Sí', 'Juan Pérez', '3001234567', 'Calle 123', 'RUTA-01', 'CONS-001', 'Sí', 'WhatsApp', 'Facturación', 'Llamada', 'Cliente insatisfecho', 'Error humano', 'Se generó orden', 'Se envió técnico'],
+      ['2025-03-16', '42', 'CT-002', 'No', 'Sí', 'María Gómez', '3107654321', 'Carrera 50', 'RUTA-02', 'CONS-002', 'No', 'Llamada telefónica', 'Medidor', 'Revisión', 'Medidor dañado', 'Falla técnica', 'Se programó visita', 'Pendiente'],
     ];
     const wsEjemplo = XLSX.utils.aoa_to_sheet([ejemploHeader, ...ejemploData]);
     wsEjemplo['!cols'] = [
+      { wch: 15 }, // FECHA
       { wch: 8 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 25 },
       { wch: 15 }, { wch: 30 }, { wch: 10 }, { wch: 12 }, { wch: 8 },
       { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 20 },
@@ -457,7 +459,7 @@ export default function Reclamos({ onBack, rol }) {
     }
   }
 
-  // Cargar desde Excel
+  // Cargar desde Excel (ahora con columna FECHA RECLAMO)
   const cargarExcel = async (event) => {
     const file = event.target.files[0]
     if (!file) return
@@ -472,46 +474,58 @@ export default function Reclamos({ onBack, rol }) {
 
       const rows = jsonData.slice(1).filter(row => row.some(cell => cell))
 
+      // Mapeo de columnas según el nuevo orden (primera columna = FECHA RECLAMO)
       const columnMap = {
-        'CICLO': 0,
-        'CONTRATO': 1,
-        'TELECOMUNICACIONES': 2,
-        'SERVICIOS PUBLICOS': 3,
-        'NOMBRE': 4,
-        'CONTACTO': 5,
-        'DIRECCION DEL RECLAMO': 6,
-        'RUTA': 7,
-        'CONSECUTIVOS': 8,
-        'DIGITAL': 9,
-        'MEDIO DE RECEPCION RECLAMO': 10,
-        'Motivo': 11,
-        'GESTION': 12,
-        'OBSERVACION RECLAMO': 13,
-        'CAUSAL': 14,
-        'GESTION REALIZADA': 15,
-        'JUSTIFICACION': 16
+        'FECHA RECLAMO': 0,
+        'CICLO': 1,
+        'CONTRATO': 2,
+        'TELECOMUNICACIONES': 3,
+        'SERVICIOS PUBLICOS': 4,
+        'NOMBRE': 5,
+        'CONTACTO': 6,
+        'DIRECCION DEL RECLAMO': 7,
+        'RUTA': 8,
+        'CONSECUTIVOS': 9,
+        'DIGITAL': 10,
+        'MEDIO DE RECEPCION RECLAMO': 11,
+        'Motivo': 12,
+        'GESTION': 13,
+        'OBSERVACION RECLAMO': 14,
+        'CAUSAL': 15,
+        'GESTION REALIZADA': 16,
+        'JUSTIFICACION': 17
       }
 
-      const reclamosExcel = rows.map(row => ({
-        ciclo: row[columnMap['CICLO']] || '',
-        contrato: row[columnMap['CONTRATO']] || '',
-        telecomunicaciones: row[columnMap['TELECOMUNICACIONES']] || '',
-        servicios_publicos: row[columnMap['SERVICIOS PUBLICOS']] || '',
-        nombre: row[columnMap['NOMBRE']] || '',
-        contacto: row[columnMap['CONTACTO']] || '',
-        direccion_reclamo: row[columnMap['DIRECCION DEL RECLAMO']] || '',
-        ruta: row[columnMap['RUTA']] || '',
-        consecutivos: row[columnMap['CONSECUTIVOS']] || '',
-        digital: row[columnMap['DIGITAL']] || '',
-        medio_recepcion: row[columnMap['MEDIO DE RECEPCION RECLAMO']] || '',
-        motivo: row[columnMap['Motivo']] || '',
-        gestion: row[columnMap['GESTION']] || '',
-        observacion_reclamo: row[columnMap['OBSERVACION RECLAMO']] || '',
-        causal: row[columnMap['CAUSAL']] || '',
-        gestion_realizada: row[columnMap['GESTION REALIZADA']] || '',
-        justificacion: row[columnMap['JUSTIFICACION']] || '',
-        fecha_reclamo: obtenerFechaColombia()
-      }))
+      const reclamosExcel = rows.map(row => {
+        let fechaReclamo = row[columnMap['FECHA RECLAMO']]
+        // Validar fecha: si está vacía o no es válida, usar fecha actual
+        if (!fechaReclamo || isNaN(new Date(fechaReclamo).getTime())) {
+          fechaReclamo = obtenerFechaColombia()
+        } else {
+          const d = new Date(fechaReclamo)
+          fechaReclamo = d.toISOString().split('T')[0]
+        }
+        return {
+          fecha_reclamo: fechaReclamo,
+          ciclo: row[columnMap['CICLO']] || '',
+          contrato: row[columnMap['CONTRATO']] || '',
+          telecomunicaciones: row[columnMap['TELECOMUNICACIONES']] || '',
+          servicios_publicos: row[columnMap['SERVICIOS PUBLICOS']] || '',
+          nombre: row[columnMap['NOMBRE']] || '',
+          contacto: row[columnMap['CONTACTO']] || '',
+          direccion_reclamo: row[columnMap['DIRECCION DEL RECLAMO']] || '',
+          ruta: row[columnMap['RUTA']] || '',
+          consecutivos: row[columnMap['CONSECUTIVOS']] || '',
+          digital: row[columnMap['DIGITAL']] || '',
+          medio_recepcion: row[columnMap['MEDIO DE RECEPCION RECLAMO']] || '',
+          motivo: row[columnMap['Motivo']] || '',
+          gestion: row[columnMap['GESTION']] || '',
+          observacion_reclamo: row[columnMap['OBSERVACION RECLAMO']] || '',
+          causal: row[columnMap['CAUSAL']] || '',
+          gestion_realizada: row[columnMap['GESTION REALIZADA']] || '',
+          justificacion: row[columnMap['JUSTIFICACION']] || ''
+        }
+      })
 
       setExcelData(reclamosExcel)
       setExcelPreview(reclamosExcel.slice(0, 5))
@@ -616,7 +630,6 @@ export default function Reclamos({ onBack, rol }) {
 
       {/* Botones de acción */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-        {/* NUEVO BOTÓN DE DESCARGA DE PLANTILLA */}
         <button className="action-btn secondary" onClick={descargarPlantilla}>
           📥 Descargar Plantilla
         </button>
@@ -763,6 +776,7 @@ export default function Reclamos({ onBack, rol }) {
                 <table>
                   <thead>
                     <tr>
+                      <th>Fecha</th>
                       <th>Ciclo</th>
                       <th>Nombre</th>
                       <th>Motivo</th>
@@ -772,6 +786,7 @@ export default function Reclamos({ onBack, rol }) {
                   <tbody>
                     {excelPreview.map((r, idx) => (
                       <tr key={idx}>
+                        <td>{r.fecha_reclamo}</td>
                         <td>{r.ciclo}</td>
                         <td>{r.nombre}</td>
                         <td>{r.motivo}</td>
